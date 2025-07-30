@@ -4,24 +4,7 @@
 
 @section('content')
     <!-- Hero Section -->
-    <section class="relative bg-gradient-to-br from-blue-900 to-indigo-800 text-white py-20">
-        <div class="container mx-auto px-4 text-center">
-            <h1 class="text-4xl md:text-6xl font-bold mb-6">
-                Step Into <span class="text-yellow-400">Style</span>
-            </h1>
-            <p class="text-xl md:text-2xl mb-8 text-gray-200">
-                Discover the perfect sneakers for every adventure
-            </p>
-            <div class="space-x-4">
-                <a href="/products" class="inline-block bg-yellow-400 text-black px-8 py-3 rounded-lg font-semibold hover:bg-yellow-300 transition-colors">
-                    Shop Now
-                </a>
-                <a href="/products?featured=1" class="inline-block border-2 border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-black transition-colors">
-                    View Featured
-                </a>
-            </div>
-        </div>
-    </section>
+
 
     <!-- Categories Section -->
     <section class="py-16 bg-white">
@@ -356,18 +339,5 @@
         </div>
     </section>
 
-    <!-- CTA Section -->
-    <section class="py-16 bg-gradient-to-r from-blue-600 to-purple-700 text-white">
-        <div class="container mx-auto px-4 text-center">
-            <h2 class="text-3xl md:text-4xl font-bold mb-4">Join the SneakerFlash Community</h2>
-            <p class="text-xl mb-8 text-gray-200">Get exclusive access to new releases and special offers</p>
-            <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
-                <input type="email" placeholder="Enter your email" 
-                       class="px-6 py-3 rounded-lg text-gray-900 w-full sm:w-80">
-                <button class="bg-yellow-400 text-black px-8 py-3 rounded-lg font-semibold hover:bg-yellow-300 transition-colors">
-                    Subscribe
-                </button>
-            </div>
-        </div>
-    </section>
+    
 @endsection
