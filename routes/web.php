@@ -19,9 +19,17 @@ use Illuminate\Support\Facades\Auth;
 // Homepage
 Route::get('/', [HomeController::class, 'index'])->name('home');
 
-// Products
+// Products - ROUTE UTAMA
 Route::get('/products', [ProductController::class, 'index'])->name('products.index');
 Route::get('/products/{slug}', [ProductController::class, 'show'])->name('products.show');
+
+// NEW NAVIGATION ROUTES - TAMBAHKAN INI
+Route::get('/mens', [ProductController::class, 'mens'])->name('products.mens');
+Route::get('/womens', [ProductController::class, 'womens'])->name('products.womens');
+Route::get('/kids', [ProductController::class, 'kids'])->name('products.kids');
+Route::get('/brand', [ProductController::class, 'brand'])->name('products.brand');
+Route::get('/accessories', [ProductController::class, 'accessories'])->name('products.accessories');
+Route::get('/sale', [ProductController::class, 'sale'])->name('products.sale');
 
 // Categories
 Route::get('/categories/{slug}', [CategoryController::class, 'show'])->name('categories.show');
@@ -124,8 +132,8 @@ Route::get('/search', [ProductController::class, 'search'])->name('search');
 // Product filters
 Route::get('/filter', [ProductController::class, 'filter'])->name('products.filter');
 
-// Brand pages
-Route::get('/brands/{brand}', [ProductController::class, 'byBrand'])->name('products.brand');
+// PERBAIKAN: Route untuk brand dengan parameter (HAPUS YANG KONFLIK)
+// Route::get('/brands/{brand}', [ProductController::class, 'byBrand'])->name('products.brand.single');
 
 // =====================================
 // STATIC PAGES

@@ -1,5 +1,5 @@
 <?php
-// File: app/Models/Product.php - UPDATED VERSION with Image Handling
+// File: app/Models/Product.php - PostgreSQL Compatible Version
 
 namespace App\Models;
 
@@ -23,6 +23,21 @@ class Product extends Model
         'sku',
         'category_id',
         'brand',
+        
+        // NEW FIELDS FOR MENU SYSTEM
+        'gender_target',
+        'product_type',
+        'search_keywords',
+        'sale_start_date',
+        'sale_end_date',
+        'is_featured_sale',
+        'available_sizes',
+        'available_colors',
+        'meta_title',
+        'meta_description',
+        'meta_keywords',
+        
+        // EXISTING FIELDS
         'images',
         'features',
         'specifications',
@@ -44,11 +59,21 @@ class Product extends Model
             'weight' => 'decimal:2',
             'is_active' => 'boolean',
             'is_featured' => 'boolean',
+            'is_featured_sale' => 'boolean',
             'images' => 'array',
             'features' => 'array',
             'specifications' => 'array',
             'dimensions' => 'array',
             'meta_data' => 'array',
+            
+            // NEW CASTS
+            'search_keywords' => 'array',
+            'available_sizes' => 'array',
+            'available_colors' => 'array',
+            'meta_keywords' => 'array',
+            'sale_start_date' => 'date',
+            'sale_end_date' => 'date',
+            
             'published_at' => 'datetime',
         ];
     }
@@ -192,8 +217,31 @@ class Product extends Model
         }
     }
 
+    /**
+     * Check if sale is currently active
+     */
+    public function getIsSaleActiveAttribute(): bool
+    {
+        if (!$this->sale_price) {
+            return false;
+        }
+
+        $now = now()->toDateString();
+        
+        // If no dates set, sale is active
+        if (!$this->sale_start_date && !$this->sale_end_date) {
+            return true;
+        }
+
+        // Check if current date is within sale period
+        $afterStart = !$this->sale_start_date || $now >= $this->sale_start_date->toDateString();
+        $beforeEnd = !$this->sale_end_date || $now <= $this->sale_end_date->toDateString();
+
+        return $afterStart && $beforeEnd;
+    }
+
     // ========================================
-    // SCOPES
+    // SCOPES FOR NEW MENU SYSTEM - PostgreSQL Compatible
     // ========================================
 
     /**
@@ -213,29 +261,69 @@ class Product extends Model
     }
 
     /**
-     * Scope untuk produk yang sudah publish
-     */
-    public function scopePublished(Builder $query): Builder
-    {
-        return $query->where('published_at', '<=', now());
-    }
-
-    /**
-     * Scope untuk produk yang tersedia (aktif, publish, ada stock)
+     * Scope untuk produk yang tersedia (published dan in stock)
      */
     public function scopeAvailable(Builder $query): Builder
     {
-        return $query->active()
-                    ->published()
+        return $query->where('is_active', true)
+                    ->whereNotNull('published_at')
+                    ->where('published_at', '<=', now())
                     ->where('stock_quantity', '>', 0);
     }
 
     /**
-     * Scope untuk filter berdasarkan kategori
+     * Scope untuk gender targeting (MENS/WOMENS/KIDS menu) - PostgreSQL Compatible
      */
-    public function scopeInCategory(Builder $query, $categoryId): Builder
+    public function scopeForGender(Builder $query, string $gender): Builder
     {
-        return $query->where('category_id', $categoryId);
+        return $query->where(function ($q) use ($gender) {
+            $q->where('gender_target', $gender)
+              ->orWhere('gender_target', 'unisex')
+              ->orWhereHas('category', function ($cat) use ($gender) {
+                  $cat->where('menu_placement', $gender)
+                      ->orWhereJsonContains('secondary_menus', $gender);
+              })
+              ->orWhere('name', 'ilike', "%{$gender}%") // PostgreSQL case-insensitive
+              ->orWhere('description', 'ilike', "%{$gender}%");
+        });
+    }
+
+    /**
+     * Scope untuk accessories (ACCESSORIES menu) - PostgreSQL Compatible
+     */
+    public function scopeAccessories(Builder $query): Builder
+    {
+        $accessoryTypes = ['backpack', 'bag', 'hat', 'cap', 'socks', 'laces', 'care_products', 'accessories'];
+        
+        return $query->where(function ($q) use ($accessoryTypes) {
+            $q->whereIn('product_type', $accessoryTypes)
+              ->orWhereHas('category', function ($cat) {
+                  $cat->where('menu_placement', 'accessories')
+                      ->orWhereJsonContains('secondary_menus', 'accessories');
+              })
+              ->orWhere('name', 'ilike', '%accessories%') // PostgreSQL case-insensitive
+              ->orWhere('name', 'ilike', '%bag%')
+              ->orWhere('name', 'ilike', '%hat%')
+              ->orWhere('name', 'ilike', '%sock%')
+              ->orWhere('name', 'ilike', '%lace%');
+        });
+    }
+
+    /**
+     * Scope untuk produk sale (SALE menu) - PostgreSQL Compatible
+     */
+    public function scopeOnSale(Builder $query): Builder
+    {
+        return $query->whereNotNull('sale_price')
+                    ->whereRaw('sale_price < price') // PostgreSQL compatible
+                    ->where(function ($q) {
+                        $q->whereNull('sale_start_date')
+                          ->orWhere('sale_start_date', '<=', now());
+                    })
+                    ->where(function ($q) {
+                        $q->whereNull('sale_end_date')
+                          ->orWhere('sale_end_date', '>=', now());
+                    });
     }
 
     /**
@@ -247,20 +335,7 @@ class Product extends Model
     }
 
     /**
-     * Scope untuk search produk
-     */
-    public function scopeSearch(Builder $query, string $search): Builder
-    {
-        return $query->where(function ($q) use ($search) {
-            $q->where('name', 'ILIKE', "%{$search}%")
-              ->orWhere('short_description', 'ILIKE', "%{$search}%")
-              ->orWhere('brand', 'ILIKE', "%{$search}%")
-              ->orWhere('sku', 'ILIKE', "%{$search}%");
-        });
-    }
-
-    /**
-     * Scope untuk filter berdasarkan rentang harga
+     * Scope untuk filter berdasarkan price range
      */
     public function scopePriceRange(Builder $query, $minPrice = null, $maxPrice = null): Builder
     {
@@ -273,6 +348,76 @@ class Product extends Model
         }
 
         return $query;
+    }
+
+    /**
+     * Scope untuk search - PostgreSQL Compatible
+     */
+    public function scopeSearch(Builder $query, string $term): Builder
+    {
+        $searchTerm = '%' . $term . '%';
+        
+        return $query->where(function ($q) use ($searchTerm, $term) {
+            $q->where('name', 'ilike', $searchTerm) // PostgreSQL case-insensitive
+              ->orWhere('description', 'ilike', $searchTerm)
+              ->orWhere('short_description', 'ilike', $searchTerm)
+              ->orWhere('brand', 'ilike', $searchTerm)
+              ->orWhereJsonContains('search_keywords', $term)
+              ->orWhereHas('category', function ($cat) use ($searchTerm) {
+                  $cat->where('name', 'ilike', $searchTerm);
+              });
+        });
+    }
+
+    // ========================================
+    // HELPER METHODS
+    // ========================================
+
+    /**
+     * Check if product matches gender target
+     */
+    public function isForGender(string $gender): bool
+    {
+        return $this->gender_target === $gender || 
+               $this->gender_target === 'unisex' ||
+               $this->category?->menu_placement === $gender ||
+               in_array($gender, $this->category?->secondary_menus ?? []);
+    }
+
+    /**
+     * Check if product is accessory
+     */
+    public function isAccessory(): bool
+    {
+        $accessoryTypes = ['backpack', 'bag', 'hat', 'cap', 'socks', 'laces', 'care_products', 'accessories'];
+        
+        return in_array($this->product_type, $accessoryTypes) ||
+               $this->category?->menu_placement === 'accessories' ||
+               in_array('accessories', $this->category?->secondary_menus ?? []);
+    }
+
+    /**
+     * Get menu classifications for this product
+     */
+    public function getMenuClassifications(): array
+    {
+        $menus = [];
+        
+        // Gender-based menus
+        if ($this->isForGender('mens')) $menus[] = 'mens';
+        if ($this->isForGender('womens')) $menus[] = 'womens';
+        if ($this->isForGender('kids')) $menus[] = 'kids';
+        
+        // Brand menu (all products with brand)
+        if ($this->brand) $menus[] = 'brand';
+        
+        // Accessories menu
+        if ($this->isAccessory()) $menus[] = 'accessories';
+        
+        // Sale menu
+        if ($this->is_sale_active && $this->sale_price) $menus[] = 'sale';
+        
+        return array_unique($menus);
     }
 
     // ========================================
@@ -337,10 +482,6 @@ class Product extends Model
 
         return $sku;
     }
-
-    // ========================================
-    // HELPER METHODS
-    // ========================================
 
     /**
      * Reduce stock quantity

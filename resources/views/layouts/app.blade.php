@@ -16,6 +16,9 @@
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
     <!-- Custom Styles -->
     <style>
         /* Exact Kick Avenue Colors - Background PUTIH */
@@ -167,8 +170,7 @@
             width: 100%;
             height: 250px;
             overflow: hidden;
-            margin: 0;
-            border-radius: 0;
+            background: #f8f9fa;
         }
 
         .carousel-slide {
@@ -178,7 +180,7 @@
             width: 100%;
             height: 100%;
             opacity: 0;
-            transition: opacity 0.8s ease-in-out;
+            transition: opacity 0.5s ease-in-out;
         }
 
         .carousel-slide.active {
@@ -188,24 +190,22 @@
         .carousel-slide img {
             width: 100%;
             height: 100%;
-            object-fit: contain;
-            display: block;
+            object-fit: cover;
         }
 
-        /* Navigation Arrows */
         .carousel-nav {
             position: absolute;
             top: 50%;
             transform: translateY(-50%);
-            background: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.9);
             border: none;
             width: 50px;
             height: 50px;
             border-radius: 50%;
-            cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
+            cursor: pointer;
             font-size: 18px;
             color: #333;
             transition: all 0.3s ease;
@@ -213,7 +213,7 @@
         }
 
         .carousel-nav:hover {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 1);
             transform: translateY(-50%) scale(1.1);
         }
 
@@ -225,161 +225,7 @@
             right: 20px;
         }
 
-        /* Dots Indicator */
-        .carousel-dots {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 10px;
-            z-index: 10;
-        }
-
-        .carousel-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.5);
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .carousel-dot.active {
-            background: rgba(255, 255, 255, 1);
-            transform: scale(1.2);
-        }
-
-        /* Auto-play pause on hover */
-        .carousel-container:hover .carousel-slide {
-            animation-play-state: paused;
-        }
-        
-        /* Footer styles exactly like Kick Avenue */
-        .nav-footer {
-            background-color: #333333;
-            color: #ffffff;
-            padding: 40px 0;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .kick-logo {
-            font-family: 'Arial Black', sans-serif;
-            font-weight: 900;
-            font-size: 32px;
-            color: #ffffff;
-            font-style: italic;
-            transform: skew(-10deg);
-            display: inline-block;
-            letter-spacing: -2px;
-        }
-        
-        .kick-option {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        
-        .kick-option a {
-            color: #cccccc;
-            text-decoration: none;
-            font-size: 14px;
-            transition: color 0.3s ease;
-        }
-        
-        .kick-option a:hover {
-            color: #ffffff;
-        }
-        
-        .kick-social-child {
-            display: flex;
-            gap: 16px;
-            margin-top: 16px;
-        }
-        
-        .kick-social-child a {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background-color: rgba(255,255,255,0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #cccccc;
-            transition: all 0.3s ease;
-        }
-        
-        .kick-social-child a:hover {
-            background-color: rgba(255,255,255,0.2);
-            color: #ffffff;
-        }
-        
-        .kick-app-img {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        
-        .kick-app-img img {
-            height: 40px;
-            width: auto;
-            cursor: pointer;
-        }
-        
-        .kick-download {
-            margin-bottom: 16px;
-        }
-        
-        .kick-download h2 {
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 16px;
-            color: #ffffff;
-        }
-        
-        .registered {
-            background-color: #1a1a1a;
-            padding: 20px 0;
-            text-align: center;
-            margin-top: 40px;
-        }
-        
-        .registered h4 {
-            color: #999999;
-            font-size: 12px;
-            font-weight: 400;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        /* Footer Column Dividers */
-        .footer-column-divider {
-            width: 1px;
-            background-color: #555555;
-            height: 120px;
-            margin: 0 20px;
-            flex-shrink: 0;
-        }
-
-        /* Mobile Slide Menu Styles */
-        .mobile-menu {
-            position: fixed;
-            top: 0;
-            left: -100%;
-            width: 300px;
-            height: 100vh;
-            background: white;
-            z-index: 9999;
-            transition: left 0.3s ease;
-            overflow-y: auto;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
-        }
-
-        .mobile-menu.open {
-            left: 0;
-        }
-
+        /* Mobile Styles */
         .mobile-menu-overlay {
             position: fixed;
             top: 0;
@@ -396,6 +242,23 @@
         .mobile-menu-overlay.open {
             opacity: 1;
             visibility: visible;
+        }
+
+        .mobile-menu {
+            position: fixed;
+            top: 0;
+            left: -100%;
+            width: 300px;
+            height: 100vh;
+            background: white;
+            z-index: 9999;
+            transition: left 0.3s ease;
+            overflow-y: auto;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        }
+
+        .mobile-menu.open {
+            left: 0;
         }
 
         .mobile-menu-header {
@@ -477,6 +340,31 @@
             }
         }
     </style>
+
+    <script>
+        function carousel() {
+            return {
+                currentSlide: 0,
+                slides: [
+                    { image: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=1200&h=250&fit=crop', alt: 'Sneaker Collection 1' },
+                    { image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=1200&h=250&fit=crop', alt: 'Sneaker Collection 2' },
+                    { image: 'https://images.unsplash.com/photo-1600185365483-26d7a4cc7519?w=1200&h=250&fit=crop', alt: 'Sneaker Collection 3' },
+                    { image: 'https://images.unsplash.com/photo-1512374382149-233c42b6a83b?w=1200&h=250&fit=crop', alt: 'Sneaker Collection 4' }
+                ],
+                nextSlide() {
+                    this.currentSlide = (this.currentSlide + 1) % this.slides.length;
+                },
+                prevSlide() {
+                    this.currentSlide = this.currentSlide === 0 ? this.slides.length - 1 : this.currentSlide - 1;
+                },
+                init() {
+                    setInterval(() => {
+                        this.nextSlide();
+                    }, 5000);
+                }
+            }
+        }
+    </script>
 </head>
 <body class="bg-gray-50">
     <!-- Header dengan navigation menu menyatu - background PUTIH -->
@@ -493,13 +381,12 @@
             
             <!-- Menu Items -->
             <div class="mobile-menu-content">
-                <a href="/blind-box" class="mobile-menu-item special">Blind Box</a>
-                <a href="{{ route('products.index') }}" class="mobile-menu-item">SNEAKERS</a>
-                <a href="/apparel" class="mobile-menu-item">APPAREL</a>
-                <a href="/k-brands" class="mobile-menu-item">K-BRANDS</a>
-                <a href="/luxury" class="mobile-menu-item">LUXURY</a>
-                <a href="/electronics-collectibles" class="mobile-menu-item">ELECTRONICS & COLLECTIBLES</a>
-                <a href="/watches" class="mobile-menu-item">WATCHES</a>
+                <a href="{{ route('products.mens') }}" class="mobile-menu-item">MENS</a>
+                <a href="{{ route('products.womens') }}" class="mobile-menu-item">WOMENS</a>
+                <a href="{{ route('products.kids') }}" class="mobile-menu-item">KIDS</a>
+                <a href="{{ route('products.brand') }}" class="mobile-menu-item">BRAND</a>
+                <a href="{{ route('products.accessories') }}" class="mobile-menu-item">ACCESSORIES</a>
+                <a href="{{ route('products.sale') }}" class="mobile-menu-item special">SALE</a>
             </div>
             
             <!-- Auth Buttons -->
@@ -523,19 +410,18 @@
                 @endauth
             </div>
         </div>
-        <!-- Baris pertama: Logo, Search, Login/Register -->
-        <div class="max-w-full px-4">
-            <div class="flex items-center justify-between h-16">
-                <!-- Logo SNEAKERFLASH pojok kiri -->
-                <div class="flex items-center pl-5">
-                    <a href="{{ route('home') }}" class="ka-logo">
-                        SNEAKERFLASH
-                    </a>
+
+        <!-- Baris pertama: Logo, Search, dan Auth -->
+        <div class="max-w-full mx-auto px-4">
+            <div class="flex items-center justify-between py-4">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <a href="/" class="ka-logo">SNEAKERFLASH</a>
                 </div>
 
-                <!-- Search Bar tengah dengan background abu-abu - 1500px -->
-                <div class="hidden md:flex flex-1 ka-search-custom mx-2">
-                    <form action="{{ route('products.index') }}" method="GET" class="w-full">
+                <!-- Search Bar - hanya tampil di desktop -->
+                <div class="hidden md:flex flex-1 max-w-2xl mx-8">
+                    <form action="{{ route('products.index') }}" method="GET" class="w-full ka-search-custom mx-auto">
                         <div class="ka-search-container">
                             <div class="relative flex items-center">
                                 <i class="fas fa-search ka-search-icon"></i>
@@ -552,16 +438,14 @@
                     </form>
                 </div>
 
-                <!-- Login Register pojok kanan -->
-                <div class="hidden md:flex items-center space-x-3 pr-2">
+                <!-- User Menu / Auth -->
+                <div class="flex items-center space-x-4">
                     @auth
                         <!-- User Dropdown -->
                         <div class="relative" x-data="{ open: false }">
-                            <button @click="open = !open" class="flex items-center space-x-2 text-gray-600 hover:text-gray-800 transition-colors">
-                                <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
-                                    <i class="fas fa-user text-white text-sm"></i>
-                                </div>
-                                <span class="font-medium text-gray-600">{{ auth()->user()->name }}</span>
+                            <button @click="open = !open" class="flex items-center space-x-2 text-gray-700 hover:text-gray-900">
+                                <i class="fas fa-user-circle text-xl"></i>
+                                <span class="hidden md:inline text-sm text-gray-600">{{ auth()->user()->name }}</span>
                                 <i class="fas fa-chevron-down text-sm text-gray-600"></i>
                             </button>
 
@@ -605,31 +489,25 @@
         <div class="max-w-full px-4">
             <!-- Desktop Navigation -->
             <div class="hidden md:flex items-center justify-center py-0">
-                <a href="/blind-box" class="ka-nav-item-white special">
-                    Blind Box
+                <a href="{{ route('products.mens') }}" class="ka-nav-item-white">
+                    MENS
                 </a>
-                <a href="/k-brands" class="ka-nav-item-white">
-                    K-Brands
+                <a href="{{ route('products.womens') }}" class="ka-nav-item-white">
+                    WOMENS
                 </a>
-                <a href="{{ route('products.index') }}" class="ka-nav-item-white">
-                    Sneakers
+                <a href="{{ route('products.kids') }}" class="ka-nav-item-white">
+                    KIDS
                 </a>
-                <a href="/apparel" class="ka-nav-item-white">
-                    Apparel
+                <a href="{{ route('products.brand') }}" class="ka-nav-item-white">
+                    BRAND
                 </a>
-                <a href="/luxury" class="ka-nav-item-white">
-                    Luxury
+                <a href="{{ route('products.accessories') }}" class="ka-nav-item-white">
+                    ACCESSORIES
                 </a>
-                <a href="/electronics-collectibles" class="ka-nav-item-white">
-                    Electronics & Collectibles
-                </a>
-                <a href="/watches" class="ka-nav-item-white">
-                    Watches
+                <a href="{{ route('products.sale') }}" class="ka-nav-item-white special">
+                    SALE
                 </a>
             </div>
-
-            <!-- Mobile Navigation Menu - Horizontal Scrollable (Remove this section) -->
-            <!-- Navigation now handled by slide menu -->
         </div>
     </header>
 
@@ -668,309 +546,70 @@
         <button class="carousel-nav next" @click="nextSlide()">
             <i class="fas fa-chevron-right"></i>
         </button>
-
-        <!-- Dots Indicator -->
-        <div class="carousel-dots">
-            <template x-for="(slide, index) in slides" :key="index">
-                <span class="carousel-dot" 
-                      :class="{ 'active': currentSlide === index }"
-                      @click="goToSlide(index)"></span>
-            </template>
-        </div>
     </div>
-
-    <!-- Flash Messages -->
-    @if(session('success'))
-        <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3" x-data="{ show: true }" x-show="show">
-            <div class="container mx-auto flex justify-between items-center">
-                <span><i class="fas fa-check-circle mr-2"></i>{{ session('success') }}</span>
-                <button @click="show = false" class="text-green-700 hover:text-green-900">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-        </div>
-    @endif
-
-    @if(session('error'))
-        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3" x-data="{ show: true }" x-show="show">
-            <div class="container mx-auto flex justify-between items-center">
-                <span><i class="fas fa-exclamation-circle mr-2"></i>{{ session('error') }}</span>
-                <button @click="show = false" class="text-red-700 hover:text-red-900">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-        </div>
-    @endif
 
     <!-- Main Content -->
     <main>
         @yield('content')
     </main>
 
-    <!-- Footer with 6 Equal Columns in 1 Row -->
-    <div class="nav-footer">
-        <div class="container mx-auto px-6">
-            <div class="hidden md:flex items-start justify-between">
-                <!-- Column 1: Logo -->
-                <div class="flex-1 max-w-xs">
-                    <div class="mb-4">
-                        <img src="/images/logo-sneakerflash.jpg" 
-                             alt="SNEAKERFLASH" 
-                             style="height: 40px; width: auto; filter: brightness(0) invert(1);">
-                    </div>
-                    <div class="mt-4">
-                        <p class="text-white font-bold text-lg mb-1">200% Money Back Guarantee</p>
-                        <p class="text-gray-400">Authentic. Guaranteed.</p>
-                    </div>
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-12">
+        <div class="container mx-auto px-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <!-- Company Info -->
+                <div>
+                    <div class="ka-logo text-white mb-4">SNEAKERFLASH</div>
+                    <p class="text-gray-400 text-sm">
+                        Premium sneakers and streetwear for everyone. Authentic products, fast delivery.
+                    </p>
                 </div>
-                
-                <!-- Divider 1 -->
-                <div class="footer-column-divider"></div>
-                
-                <!-- Column 2: FAQ Links -->
-                <div class="flex-1 max-w-xs">
-                    <div class="kick-option">
-                        <a href="/helps/faq">FAQ</a>
-                        <a href="/helps/terms-and-conditions">Terms and Conditions</a>
-                        <a href="/helps/general-faq">Buying & Selling Guide</a>
-                        <a href="/kickavenews">SneakerFlash News</a>
-                    </div>
+
+                <!-- Quick Links -->
+                <div>
+                    <h4 class="font-semibold mb-4">Quick Links</h4>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="{{ route('products.index') }}" class="text-gray-400 hover:text-white">All Products</a></li>
+                        <li><a href="{{ route('products.sale') }}" class="text-gray-400 hover:text-white">Sale</a></li>
+                        <li><a href="/about" class="text-gray-400 hover:text-white">About Us</a></li>
+                        <li><a href="/contact" class="text-gray-400 hover:text-white">Contact</a></li>
+                    </ul>
                 </div>
-                
-                <!-- Divider 2 -->
-                <div class="footer-column-divider"></div>
-                
-                <!-- Column 3: Instagram Links -->
-                <div class="flex-1 max-w-xs">
-                    <h2 class="text-white font-semibold text-base mb-3">Explore us more on Instagram!</h2>
-                    <div class="space-y-2">
-                        <a href="https://www.instagram.com/sneakerflash/" target="_blank" class="text-gray-300 hover:text-white text-sm flex items-center">
-                            <i class="fab fa-instagram mr-2"></i>
-                            SneakerFlash
-                        </a>
-                        <a href="https://www.instagram.com/luxavenue_id/" target="_blank" class="text-gray-300 hover:text-white text-sm flex items-center">
-                            <i class="fab fa-instagram mr-2"></i>
-                            LuxAvenue
-                        </a>
-                    </div>
+
+                <!-- Customer Service -->
+                <div>
+                    <h4 class="font-semibold mb-4">Customer Service</h4>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="/shipping-info" class="text-gray-400 hover:text-white">Shipping Info</a></li>
+                        <li><a href="/returns" class="text-gray-400 hover:text-white">Returns</a></li>
+                        <li><a href="/size-guide" class="text-gray-400 hover:text-white">Size Guide</a></li>
+                        <li><a href="/terms" class="text-gray-400 hover:text-white">Terms & Conditions</a></li>
+                    </ul>
                 </div>
-                
-                <!-- Divider 3 -->
-                <div class="footer-column-divider"></div>
-                
-                <!-- Column 4: Keep in Touch Social -->
-                <div class="flex-1 max-w-xs">
-                    <h2 class="text-white font-semibold text-base mb-3">Keep in touch with us!</h2>
-                    <div class="flex gap-3">
-                        <a href="https://www.instagram.com/sneakerflash/" target="_blank" class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center text-white hover:bg-gray-500">
-                            <i class="fab fa-instagram"></i>
+
+                <!-- Follow Us -->
+                <div>
+                    <h4 class="font-semibold mb-4">Follow Us</h4>
+                    <div class="flex space-x-4">
+                        <a href="#" class="text-gray-400 hover:text-white">
+                            <i class="fab fa-instagram text-xl"></i>
                         </a>
-                        <a href="https://www.youtube.com/channel/UCchannel" target="_blank" class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center text-white hover:bg-gray-500">
-                            <i class="fab fa-youtube"></i>
+                        <a href="#" class="text-gray-400 hover:text-white">
+                            <i class="fab fa-tiktok text-xl"></i>
                         </a>
-                        <a href="https://www.facebook.com/sneakerflash" target="_blank" class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center text-white hover:bg-gray-500">
-                            <i class="fab fa-facebook-f"></i>
+                        <a href="#" class="text-gray-400 hover:text-white">
+                            <i class="fab fa-facebook text-xl"></i>
                         </a>
-                        <a href="https://twitter.com/sneakerflash" target="_blank" class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center text-white hover:bg-gray-500">
-                            <i class="fab fa-twitter"></i>
-                        </a>
-                        <a href="https://www.tiktok.com/@sneakerflash" target="_blank" class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center text-white hover:bg-gray-500">
-                            <i class="fab fa-tiktok"></i>
-                        </a>
-                    </div>
-                </div>
-                
-                <!-- Divider 4 -->
-                <div class="footer-column-divider"></div>
-                
-                <!-- Column 5: Phone Image -->
-                <div class="flex-1 max-w-xs flex justify-center">
-                    <img src="/images/footer-phone-display.png" 
-                         alt="SneakerFlash App" 
-                         style="width: 160px; height: auto; object-fit: contain;">
-                </div>
-                
-                <!-- Divider 5 -->
-                <div class="footer-column-divider"></div>
-                
-                <!-- Column 6: Download App -->
-                <div class="flex-1 max-w-xs">
-                    <div class="kick-download">
-                        <h2>Download Our App</h2>
-                        <div class="kick-app-img">
-                            <a href="https://apps.apple.com/app/sneakerflash" target="_blank">
-                                <img src="/images/footer-app-download.9bd3e5ea.png" 
-                                     alt="Download on App Store" 
-                                     style="margin-bottom: 10px; cursor: pointer; height: 40px; width: auto;">
-                            </a>
-                            <a href="https://play.google.com/store/apps/details?id=com.sneakerflash" target="_blank">
-                                <img src="/images/footer-google-play.5b128317.png" 
-                                     alt="Get it on Google Play" 
-                                     style="display: block; cursor: pointer; height: 40px; width: auto;">
-                            </a>
-                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Mobile Footer (Stack Vertically) -->
-            <div class="md:hidden space-y-8">
-                <div>
-                    <img src="/images/logo-sneakerflash.jpg" 
-                         alt="SNEAKERFLASH" 
-                         style="height: 40px; width: auto; filter: brightness(0) invert(1);">
-                    <p class="text-white font-bold text-lg mb-1 mt-4">200% Money Back Guarantee</p>
-                    <p class="text-gray-400">Authentic. Guaranteed.</p>
-                </div>
-                
-                <div class="kick-option">
-                    <a href="/helps/faq">FAQ</a>
-                    <a href="/helps/terms-and-conditions">Terms and Conditions</a>
-                    <a href="/helps/general-faq">Buying & Selling Guide</a>
-                    <a href="/kickavenews">SneakerFlash News</a>
-                </div>
-                
-                <div>
-                    <h2 class="text-white font-semibold text-base mb-3">Explore us more on Instagram!</h2>
-                    <div class="space-y-2">
-                        <a href="https://www.instagram.com/sneakerflash/" target="_blank" class="text-gray-300 hover:text-white text-sm flex items-center">
-                            <i class="fab fa-instagram mr-2"></i>
-                            SneakerFlash
-                        </a>
-                        <a href="https://www.instagram.com/luxavenue_id/" target="_blank" class="text-gray-300 hover:text-white text-sm flex items-center">
-                            <i class="fab fa-instagram mr-2"></i>
-                            LuxAvenue
-                        </a>
-                    </div>
-                </div>
-                
-                <div>
-                    <h2 class="text-white font-semibold text-base mb-3">Keep in touch with us!</h2>
-                    <div class="flex gap-3">
-                        <a href="https://www.instagram.com/sneakerflash/" target="_blank" class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center text-white">
-                            <i class="fab fa-instagram"></i>
-                        </a>
-                        <a href="https://www.youtube.com/channel/UCchannel" target="_blank" class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center text-white">
-                            <i class="fab fa-youtube"></i>
-                        </a>
-                        <a href="https://www.facebook.com/sneakerflash" target="_blank" class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center text-white">
-                            <i class="fab fa-facebook-f"></i>
-                        </a>
-                        <a href="https://twitter.com/sneakerflash" target="_blank" class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center text-white">
-                            <i class="fab fa-twitter"></i>
-                        </a>
-                        <a href="https://www.tiktok.com/@sneakerflash" target="_blank" class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center text-white">
-                            <i class="fab fa-tiktok"></i>
-                        </a>
-                    </div>
-                </div>
-                
-                <div class="flex justify-center">
-                    <img src="/images/footer-phone-display.png" 
-                         alt="SneakerFlash App" 
-                         style="width: 120px; height: auto; object-fit: contain;">
-                </div>
-                
-                <div>
-                    <h2 class="text-white font-semibold text-base mb-3">Download Our App</h2>
-                    <div class="kick-app-img">
-                        <a href="https://apps.apple.com/app/sneakerflash" target="_blank">
-                            <img src="/images/footer-app-download.9bd3e5ea.png" 
-                                 alt="Download on App Store" 
-                                 style="margin-bottom: 10px; cursor: pointer; height: 40px; width: auto;">
-                        </a>
-                        <a href="https://play.google.com/store/apps/details?id=com.sneakerflash" target="_blank">
-                            <img src="/images/footer-google-play.5b128317.png" 
-                                 alt="Get it on Google Play" 
-                                 style="display: block; cursor: pointer; height: 40px; width: auto;">
-                        </a>
-                    </div>
-                </div>
+            <div class="border-t border-gray-800 mt-8 pt-8 text-center">
+                <p class="text-gray-400 text-sm">
+                    &copy; {{ date('Y') }} SneakerFlash. All rights reserved.
+                </p>
             </div>
         </div>
-        
-        <!-- Registered section -->
-        <div class="registered">
-            <h4>
-                <span>REGISTERED UNDER </span>
-                <span>PT. KARUNIA INTERNASIONAL CITRA KENCANA</span>
-            </h4>
-        </div>
-    </div>
-
-    <!-- WhatsApp Float Button -->
-    <div class="fixed bottom-6 right-6 z-50">
-        <a href="https://wa.me/1234567890" target="_blank" 
-           class="w-14 h-14 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg hover:bg-green-600 transition-all duration-300 hover:scale-110 transform">
-            <i class="fab fa-whatsapp text-2xl"></i>
-        </a>
-    </div>
-
-    <!-- Alpine.js -->
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    
-    <!-- Carousel JavaScript -->
-    <script>
-        function carousel() {
-            return {
-                currentSlide: 0,
-                slides: [
-                    {
-                        image: '/images/slide1.jpg',
-                        alt: 'SneakerFlash Promotion 1'
-                    },
-                    {
-                        image: '/images/slide2.jpg',
-                        alt: 'SneakerFlash Promotion 2'
-                    },
-                    {
-                        image: '/images/slide3.jpg',
-                        alt: 'SneakerFlash Promotion 3'
-                    },
-                    {
-                        image: '/images/slide4.jpg',
-                        alt: 'SneakerFlash Promotion 4'
-                    },
-                    {
-                        image: '/images/slide5.jpg',
-                        alt: 'SneakerFlash Promotion 5'
-                    }
-                ],
-                autoplayInterval: null,
-
-                init() {
-                    this.startAutoplay();
-                },
-
-                startAutoplay() {
-                    this.autoplayInterval = setInterval(() => {
-                        this.nextSlide();
-                    }, 5000);
-                },
-
-                stopAutoplay() {
-                    if (this.autoplayInterval) {
-                        clearInterval(this.autoplayInterval);
-                    }
-                },
-
-                nextSlide() {
-                    this.currentSlide = (this.currentSlide + 1) % this.slides.length;
-                },
-
-                prevSlide() {
-                    this.currentSlide = this.currentSlide === 0 ? this.slides.length - 1 : this.currentSlide - 1;
-                },
-
-                goToSlide(index) {
-                    this.currentSlide = index;
-                    this.stopAutoplay();
-                    setTimeout(() => this.startAutoplay(), 3000);
-                }
-            };
-        }
-    </script>
-    
-    @stack('scripts')
+    </footer>
 </body>
 </html>
