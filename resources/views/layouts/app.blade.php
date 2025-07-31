@@ -38,6 +38,13 @@
             transform: skew(-10deg);
             display: inline-block;
         }
+
+        /* Logo Image Styles */
+        .ka-logo-img {
+            height: 50px;
+            width: auto;
+            object-fit: contain;
+        }
         
         /* Search container dengan lebar custom 1500px */
         .ka-search-custom {
@@ -136,9 +143,85 @@
         .ka-register-btn:hover {
             background: #555;
         }
+
+        /* Dropdown Styles - Updated for click-based dropdowns */
+        .nav-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            min-width: 200px;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease;
+            margin-top: 10px;
+            pointer-events: none;
+        }
+
+        /* Show dropdown when active */
+        .nav-dropdown.show {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
+
+        /* Navigation item container */
+        .nav-item-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        /* Main navigation button styling - changed from links to buttons */
+        .nav-main-btn {
+            color: #666666;
+            padding: 8px 20px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 16px;
+            font-family: 'Arial Black', 'Helvetica', sans-serif;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            text-align: center;
+            position: relative;
+            cursor: pointer;
+            z-index: 1001;
+            background: none;
+            border: none;
+        }
         
-        /* Navigation Menu items untuk background PUTIH - font sama seperti logo */
-        .ka-nav-item-white {
+        .nav-main-btn:hover {
+            background-color: rgba(0,0,0,0.05);
+            color: #333;
+        }
+        
+        .nav-main-btn.special {
+            color: #ff4757 !important;
+            font-weight: 600;
+        }
+        
+        .nav-main-btn.special:hover {
+            color: #ff6b7d !important;
+        }
+
+        /* Dropdown arrow */
+        .nav-main-btn .dropdown-arrow {
+            margin-left: 5px;
+            font-size: 12px;
+            transition: transform 0.2s ease;
+        }
+
+        .nav-main-btn.active .dropdown-arrow {
+            transform: rotate(180deg);
+        }
+
+        /* Simple link styling for items without dropdowns */
+        .nav-simple-link {
             color: #666666;
             padding: 8px 20px;
             text-decoration: none;
@@ -148,20 +231,76 @@
             transition: all 0.3s ease;
             display: block;
             text-align: center;
+            position: relative;
+            cursor: pointer;
+            z-index: 1001;
         }
         
-        .ka-nav-item-white:hover {
+        .nav-simple-link:hover {
             background-color: rgba(0,0,0,0.05);
             color: #333;
         }
         
-        .ka-nav-item-white.special {
+        .nav-simple-link.special {
             color: #ff4757 !important;
             font-weight: 600;
         }
         
-        .ka-nav-item-white.special:hover {
+        .nav-simple-link.special:hover {
             color: #ff6b7d !important;
+        }
+
+        .dropdown-item {
+            display: block;
+            padding: 12px 20px;
+            color: #666;
+            text-decoration: none;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            border-bottom: 1px solid #f0f0f0;
+            transition: all 0.3s ease;
+        }
+
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .dropdown-item:hover {
+            background: #f8f9fa;
+            color: #333;
+        }
+
+        .dropdown-header {
+            padding: 15px 20px 10px;
+            font-weight: 700;
+            font-size: 14px;
+            color: #333;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 2px solid #f0f0f0;
+            margin-bottom: 5px;
+            font-family: 'Arial Black', 'Helvetica', sans-serif;
+        }
+
+        .dropdown-header-link {
+            display: block;
+            padding: 15px 20px 10px;
+            font-weight: 700;
+            font-size: 14px;
+            color: #333;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 2px solid #f0f0f0;
+            margin-bottom: 5px;
+            font-family: 'Arial Black', 'Helvetica', sans-serif;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .dropdown-header-link:hover {
+            background: #f8f9fa;
+            color: #000;
         }
 
         /* Image Carousel Styles - Like Kick Avenue */
@@ -338,6 +477,14 @@
             .footer-column-divider {
                 display: none;
             }
+
+            .nav-dropdown {
+                display: none;
+            }
+
+            .ka-logo-img {
+                height: 40px;
+            }
         }
     </style>
 
@@ -364,6 +511,41 @@
                 }
             }
         }
+
+        // Navigation dropdown functionality
+        function navigationDropdown() {
+            return {
+                activeDropdown: null,
+                
+                toggleDropdown(dropdownName) {
+                    if (this.activeDropdown === dropdownName) {
+                        this.activeDropdown = null;
+                    } else {
+                        this.activeDropdown = dropdownName;
+                    }
+                },
+                
+                closeDropdown() {
+                    this.activeDropdown = null;
+                },
+                
+                isDropdownActive(dropdownName) {
+                    return this.activeDropdown === dropdownName;
+                }
+            }
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const navContainer = document.querySelector('.nav-container');
+            if (navContainer && !navContainer.contains(event.target)) {
+                // Trigger Alpine.js to close dropdown
+                const alpineComponent = document.querySelector('[x-data*="navigationDropdown"]');
+                if (alpineComponent && alpineComponent._x_dataStack) {
+                    alpineComponent._x_dataStack[0].closeDropdown();
+                }
+            }
+        });
     </script>
 </head>
 <body class="bg-gray-50">
@@ -376,17 +558,17 @@
         <div class="mobile-menu" :class="{ 'open': mobileMenuOpen }">
             <!-- Menu Header -->
             <div class="mobile-menu-header">
-                <div class="ka-logo text-black">SNEAKERFLASH</div>
+                <img src="{{ asset('images/logo-sneakerflash.jpg') }}" alt="SneakerFlash Logo" class="ka-logo-img mx-auto">
             </div>
             
             <!-- Menu Items -->
             <div class="mobile-menu-content">
-                <a href="{{ route('products.mens') }}" class="mobile-menu-item">MENS</a>
-                <a href="{{ route('products.womens') }}" class="mobile-menu-item">WOMENS</a>
-                <a href="{{ route('products.kids') }}" class="mobile-menu-item">KIDS</a>
-                <a href="{{ route('products.brand') }}" class="mobile-menu-item">BRAND</a>
-                <a href="{{ route('products.accessories') }}" class="mobile-menu-item">ACCESSORIES</a>
-                <a href="{{ route('products.sale') }}" class="mobile-menu-item special">SALE</a>
+                <a href="/products?category=mens" class="mobile-menu-item">MENS</a>
+                <a href="/products?category=womens" class="mobile-menu-item">WOMENS</a>
+                <a href="/products?category=kids" class="mobile-menu-item">KIDS</a>
+                <a href="/products?filter=brand" class="mobile-menu-item">BRAND</a>
+                <a href="/products?category=accessories" class="mobile-menu-item">ACCESSORIES</a>
+                <a href="/products?sale=true" class="mobile-menu-item special">SALE</a>
             </div>
             
             <!-- Auth Buttons -->
@@ -416,12 +598,14 @@
             <div class="flex items-center justify-between py-4">
                 <!-- Logo -->
                 <div class="flex items-center">
-                    <a href="/" class="ka-logo">SNEAKERFLASH</a>
+                    <a href="/">
+                        <img src="{{ asset('images/logo-sneakerflash.jpg') }}" alt="SneakerFlash Logo" class="ka-logo-img">
+                    </a>
                 </div>
 
                 <!-- Search Bar - hanya tampil di desktop -->
                 <div class="hidden md:flex flex-1 max-w-2xl mx-8">
-                    <form action="{{ route('products.index') }}" method="GET" class="w-full ka-search-custom mx-auto">
+                    <form action="/products" method="GET" class="w-full ka-search-custom mx-auto">
                         <div class="ka-search-container">
                             <div class="relative flex items-center">
                                 <i class="fas fa-search ka-search-icon"></i>
@@ -485,35 +669,125 @@
             </div>
         </div>
 
-        <!-- Baris kedua: Navigation Menu (menyatu dengan header putih tanpa border) -->
+        <!-- Baris kedua: Navigation Menu dengan Dropdown -->
         <div class="max-w-full px-4">
             <!-- Desktop Navigation -->
-            <div class="hidden md:flex items-center justify-center py-0">
-                <a href="{{ route('products.mens') }}" class="ka-nav-item-white">
-                    MENS
-                </a>
-                <a href="{{ route('products.womens') }}" class="ka-nav-item-white">
-                    WOMENS
-                </a>
-                <a href="{{ route('products.kids') }}" class="ka-nav-item-white">
-                    KIDS
-                </a>
-                <a href="{{ route('products.brand') }}" class="ka-nav-item-white">
-                    BRAND
-                </a>
-                <a href="{{ route('products.accessories') }}" class="ka-nav-item-white">
-                    ACCESSORIES
-                </a>
-                <a href="{{ route('products.sale') }}" class="ka-nav-item-white special">
-                    SALE
-                </a>
+            <div class="hidden md:flex items-center justify-center py-0 nav-container" x-data="navigationDropdown()" @click.away="closeDropdown()">
+                
+                <!-- MENS Dropdown - Click to toggle -->
+                <div class="nav-item-container">
+                    <button @click="toggleDropdown('mens')" 
+                            class="nav-main-btn" 
+                            :class="{ 'active': isDropdownActive('mens') }">
+                        MENS
+                        <i class="fas fa-chevron-down dropdown-arrow"></i>
+                    </button>
+                    <div class="nav-dropdown" :class="{ 'show': isDropdownActive('mens') }">
+                        <a href="/products?category=mens&section=footwear" class="dropdown-header-link">FOOTWEAR</a>
+                        <a href="/products?category=mens&type=lifestyle" class="dropdown-item">Lifestyle/Casual</a>
+                        <a href="/products?category=mens&type=running" class="dropdown-item">Running</a>
+                        <a href="/products?category=mens&type=training" class="dropdown-item">Training</a>
+                        <a href="/products?category=mens&type=basketball" class="dropdown-item">Basketball</a>
+                    </div>
+                </div>
+
+                <!-- WOMENS Dropdown - Click to toggle -->
+                <div class="nav-item-container">
+                    <button @click="toggleDropdown('womens')" 
+                            class="nav-main-btn" 
+                            :class="{ 'active': isDropdownActive('womens') }">
+                        WOMENS
+                        <i class="fas fa-chevron-down dropdown-arrow"></i>
+                    </button>
+                    <div class="nav-dropdown" :class="{ 'show': isDropdownActive('womens') }">
+                        <a href="/products?category=womens&section=footwear" class="dropdown-header-link">FOOTWEAR</a>
+                        <a href="/products?category=womens&type=lifestyle" class="dropdown-item">Lifestyle/Casual</a>
+                        <a href="/products?category=womens&type=running" class="dropdown-item">Running</a>
+                        <a href="/products?category=womens&type=training" class="dropdown-item">Training</a>
+                    </div>
+                </div>
+
+                <!-- KIDS - Simple link, no dropdown -->
+                <div class="nav-item-container">
+                    <a href="/products?category=kids" class="nav-simple-link">
+                        KIDS
+                    </a>
+                </div>
+
+                <!-- BRAND Dropdown - Click to toggle -->
+                <div class="nav-item-container">
+                    <button @click="toggleDropdown('brand')" 
+                            class="nav-main-btn" 
+                            :class="{ 'active': isDropdownActive('brand') }">
+                        BRAND
+                        <i class="fas fa-chevron-down dropdown-arrow"></i>
+                    </button>
+                    <div class="nav-dropdown" :class="{ 'show': isDropdownActive('brand') }">
+                        <a href="/products?brand=nike" class="dropdown-item">
+                            <i class="fab fa-nike mr-2"></i>NIKE
+                        </a>
+                        <a href="/products?brand=adidas" class="dropdown-item">
+                            <i class="fab fa-adidas mr-2"></i>ADIDAS
+                        </a>
+                        <a href="/products?brand=puma" class="dropdown-item">
+                            <i class="fab fa-puma mr-2"></i>PUMA
+                        </a>
+                        <a href="/products?brand=converse" class="dropdown-item">
+                            <i class="fas fa-star mr-2"></i>CONVERSE
+                        </a>
+                        <a href="/products?brand=vans" class="dropdown-item">
+                            <i class="fas fa-skateboard mr-2"></i>VANS
+                        </a>
+                        <a href="/products?brand=newbalance" class="dropdown-item">
+                            <i class="fas fa-balance-scale mr-2"></i>NEW BALANCE
+                        </a>
+                        <a href="/products?brand=jordan" class="dropdown-item">
+                            <i class="fas fa-basketball-ball mr-2"></i>JORDAN
+                        </a>
+                    </div>
+                </div>
+
+                <!-- ACCESSORIES Dropdown - Click to toggle -->
+                <div class="nav-item-container">
+                    <button @click="toggleDropdown('accessories')" 
+                            class="nav-main-btn" 
+                            :class="{ 'active': isDropdownActive('accessories') }">
+                        ACCESSORIES
+                        <i class="fas fa-chevron-down dropdown-arrow"></i>
+                    </button>
+                    <div class="nav-dropdown" :class="{ 'show': isDropdownActive('accessories') }">
+                        <a href="/products?category=accessories" class="dropdown-header-link">ACCESSORIES</a>
+                        <a href="/products?category=accessories&type=bag" class="dropdown-item">
+                            <i class="fas fa-shopping-bag mr-2"></i>Bag
+                        </a>
+                        <a href="/products?category=accessories&type=sock" class="dropdown-item">
+                            <i class="fas fa-socks mr-2"></i>Sock
+                        </a>
+                        <a href="/products?category=accessories&type=cap" class="dropdown-item">
+                            <i class="fas fa-hat-cowboy mr-2"></i>Cap
+                        </a>
+                        <a href="/products?category=accessories&type=cleaner" class="dropdown-item">
+                            <i class="fas fa-spray-can mr-2"></i>Shoe Cleaner
+                        </a>
+                        <a href="/products?category=accessories&type=others" class="dropdown-item">
+                            <i class="fas fa-ellipsis-h mr-2"></i>Others
+                        </a>
+                    </div>
+                </div>
+
+                <!-- SALE - Simple link, no dropdown -->
+                <div class="nav-item-container">
+                    <a href="/products?sale=true" class="nav-simple-link special">
+                        SALE
+                    </a>
+                </div>
             </div>
         </div>
     </header>
 
     <!-- Mobile Search (tampil di mobile saja) -->
     <div class="md:hidden bg-white border-b px-4 py-3">
-        <form action="{{ route('products.index') }}" method="GET">
+        <form action="/products" method="GET">
             <div class="ka-search-container">
                 <div class="relative flex items-center">
                     <i class="fas fa-search ka-search-icon"></i>
@@ -559,7 +833,7 @@
             <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
                 <!-- Company Info -->
                 <div>
-                    <div class="ka-logo text-white mb-4">SNEAKERFLASH</div>
+                    <img src="{{ asset('images/logo-sneakerflash.jpg') }}" alt="SneakerFlash Logo" class="ka-logo-img mb-4 filter brightness-0 invert">
                     <p class="text-gray-400 text-sm">
                         Premium sneakers and streetwear for everyone. Authentic products, fast delivery.
                     </p>
@@ -569,8 +843,8 @@
                 <div>
                     <h4 class="font-semibold mb-4">Quick Links</h4>
                     <ul class="space-y-2 text-sm">
-                        <li><a href="{{ route('products.index') }}" class="text-gray-400 hover:text-white">All Products</a></li>
-                        <li><a href="{{ route('products.sale') }}" class="text-gray-400 hover:text-white">Sale</a></li>
+                        <li><a href="/products" class="text-gray-400 hover:text-white">All Products</a></li>
+                        <li><a href="/products?sale=true" class="text-gray-400 hover:text-white">Sale</a></li>
                         <li><a href="/about" class="text-gray-400 hover:text-white">About Us</a></li>
                         <li><a href="/contact" class="text-gray-400 hover:text-white">Contact</a></li>
                     </ul>

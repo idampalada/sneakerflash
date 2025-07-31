@@ -10,12 +10,30 @@
                 <ol class="flex space-x-2 text-gray-600">
                     <li><a href="/" class="hover:text-blue-600">Home</a></li>
                     <li>/</li>
-                    <li class="text-gray-900">Products</li>
+                    @if(request('category'))
+                        <li><a href="{{ route('products.index') }}" class="hover:text-blue-600">Products</a></li>
+                        <li>/</li>
+                        <li class="text-gray-900 uppercase">{{ strtoupper(request('category')) }}</li>
+                        @if(request('section'))
+                            <li>/</li>
+                            <li class="text-gray-900 capitalize">{{ ucfirst(str_replace('_', ' ', request('section'))) }}</li>
+                        @endif
+                    @else
+                        <li class="text-gray-900">Products</li>
+                    @endif
                 </ol>
             </nav>
             
             <div class="flex justify-between items-center">
-                <h1 class="text-3xl font-bold text-gray-900">All Products</h1>
+                <h1 class="text-3xl font-bold text-gray-900">
+                    @if(request('category') && request('section'))
+                        {{ strtoupper(request('category')) }} {{ ucfirst(str_replace('_', ' ', request('section'))) }}
+                    @elseif(request('category'))
+                        {{ strtoupper(request('category')) }} Products
+                    @else
+                        All Products
+                    @endif
+                </h1>
                 <div class="text-gray-600">
                     {{ isset($products) ? $products->total() : '0' }} products found
                 </div>
@@ -23,7 +41,7 @@
         </div>
     </section>
 
-    <!-- Category Tabs - Kick Avenue Style -->
+    <!-- Category Tabs - Enhanced for nested categories -->
     <section class="bg-white py-4 border-b border-gray-200">
         <div class="container mx-auto px-4">
             <div class="flex items-center space-x-4 overflow-x-auto">
@@ -36,12 +54,21 @@
 
                 <!-- Category Pills -->
                 <div class="flex space-x-2 flex-shrink-0">
-                    <a href="{{ route('products.index') }}" class="category-pill active">
-                        Sneakers
+                    <a href="{{ route('products.index') }}" class="category-pill {{ !request('category') ? 'active' : '' }}">
+                        All Products
                     </a>
-                    <a href="#" class="category-pill">Apparel</a>
-                    <a href="#" class="category-pill">Luxury</a>
-                    <a href="#" class="category-pill">Electronics & Collectibles</a>
+                    <a href="{{ route('products.index', ['category' => 'mens']) }}" class="category-pill {{ request('category') === 'mens' ? 'active' : '' }}">
+                        MENS
+                    </a>
+                    <a href="{{ route('products.index', ['category' => 'womens']) }}" class="category-pill {{ request('category') === 'womens' ? 'active' : '' }}">
+                        WOMENS
+                    </a>
+                    <a href="{{ route('products.index', ['category' => 'kids']) }}" class="category-pill {{ request('category') === 'kids' ? 'active' : '' }}">
+                        KIDS
+                    </a>
+                    <a href="{{ route('products.index', ['sale' => 'true']) }}" class="category-pill {{ request('sale') ? 'active' : '' }} special">
+                        SALE
+                    </a>
                 </div>
 
                 <!-- Reset Filter -->
@@ -55,51 +82,148 @@
 
     <div class="container mx-auto px-4 py-8">
         <div class="flex gap-8">
-            <!-- Filters Sidebar - Hidden by default -->
+            <!-- Enhanced Filters Sidebar -->
             <aside id="filterSidebar" class="w-72 flex-shrink-0 hidden">
                 <div class="bg-white rounded-2xl p-6 sticky top-4 border border-gray-100">
                     <h3 class="font-bold text-gray-900 mb-6 text-lg">Filters</h3>
                     
                     <form method="GET" id="filterForm">
-                        <!-- Category Filter -->
+                        <!-- Main Category Filter -->
                         <div class="mb-8">
                             <h4 class="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide">Category</h4>
                             <div class="space-y-2">
                                 <label class="flex items-center cursor-pointer">
-                                    <input type="radio" name="category" value="" class="mr-3" checked>
+                                    <input type="radio" name="category" value="" class="mr-3" {{ !request('category') ? 'checked' : '' }}>
                                     <span class="text-sm">All Categories</span>
                                 </label>
                                 <label class="flex items-center cursor-pointer">
-                                    <input type="radio" name="category" value="sneakers" class="mr-3">
-                                    <span class="text-sm">Sneakers</span>
+                                    <input type="radio" name="category" value="mens" class="mr-3" {{ request('category') === 'mens' ? 'checked' : '' }}>
+                                    <span class="text-sm">MENS</span>
                                 </label>
                                 <label class="flex items-center cursor-pointer">
-                                    <input type="radio" name="category" value="nike-cortez" class="mr-3">
-                                    <span class="text-sm">Nike Cortez</span>
+                                    <input type="radio" name="category" value="womens" class="mr-3" {{ request('category') === 'womens' ? 'checked' : '' }}>
+                                    <span class="text-sm">WOMENS</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="category" value="kids" class="mr-3" {{ request('category') === 'kids' ? 'checked' : '' }}>
+                                    <span class="text-sm">Kids</span>
                                 </label>
                             </div>
                         </div>
 
-                        <!-- US Size Filter -->
+                        <!-- Sub-Category Filter (Footwear sections) -->
+                        @if(request('category') && in_array(request('category'), ['mens', 'womens']))
                         <div class="mb-8">
-                            <h4 class="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide">US Size</h4>
-                            <div class="grid grid-cols-4 gap-2">
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="6">6</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="6.5">6.5</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="7">7</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="7.5">7.5</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="8">8</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="8.5">8.5</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="9">9</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="9.5">9.5</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="10">10</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="10.5">10.5</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="11">11</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="11.5">11.5</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="12">12</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="12.5">12.5</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="13">13</button>
-                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="14">14</button>
+                            <h4 class="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide">
+                                {{ strtoupper(request('category')) }} Footwear
+                            </h4>
+                            <div class="space-y-2">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="type" value="" class="mr-3" {{ !request('type') ? 'checked' : '' }}>
+                                    <span class="text-sm">All Footwear</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="type" value="lifestyle" class="mr-3" {{ request('type') === 'lifestyle' ? 'checked' : '' }}>
+                                    <span class="text-sm">Lifestyle/casual</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="type" value="running" class="mr-3" {{ request('type') === 'running' ? 'checked' : '' }}>
+                                    <span class="text-sm">Running</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="type" value="training" class="mr-3" {{ request('type') === 'training' ? 'checked' : '' }}>
+                                    <span class="text-sm">Training</span>
+                                </label>
+                                @if(request('category') === 'mens')
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="type" value="basketball" class="mr-3" {{ request('type') === 'basketball' ? 'checked' : '' }}>
+                                    <span class="text-sm">Basketball</span>
+                                </label>
+                                @endif
+                            </div>
+                        </div>
+                        @endif
+
+                        <!-- Availability Filter -->
+                        <div class="mb-8">
+                            <h4 class="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide">Availability</h4>
+                            <div class="space-y-2">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" name="availability[]" value="in_stock" class="mr-3" {{ in_array('in_stock', request('availability', [])) ? 'checked' : '' }}>
+                                    <span class="text-sm">In stock (383)</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" name="availability[]" value="not_available" class="mr-3" {{ in_array('not_available', request('availability', [])) ? 'checked' : '' }}>
+                                    <span class="text-sm">Not available (24)</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Brands Filter -->
+                        <div class="mb-8">
+                            <h4 class="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide">Brand</h4>
+                            <div class="max-h-48 overflow-y-auto space-y-2">
+                                @php
+                                $brands = [
+                                    'adidas' => 'ADIDAS (87)',
+                                    'air_jordan' => 'AIR JORDAN (2)',
+                                    'asics' => 'ASICS (8)',
+                                    'converse' => 'CONVERSE (9)',
+                                    'hoka_one' => 'HOKA ONE (12)',
+                                    'new_balance' => 'NEW BALANCE (77)',
+                                    'nike' => 'NIKE (54)',
+                                    'puma' => 'PUMA (45)',
+                                    'reebok' => 'REEBOK (23)',
+                                    'skechers' => 'SKECHERS (56)',
+                                    'vans' => 'VANS (32)'
+                                ];
+                                @endphp
+                                @foreach($brands as $brand_value => $brand_label)
+                                <label class="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded">
+                                    <input type="checkbox" name="brands[]" value="{{ $brand_value }}" class="mr-3" {{ in_array($brand_value, request('brands', [])) ? 'checked' : '' }}>
+                                    <span class="text-sm">{{ $brand_label }}</span>
+                                </label>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        <!-- Price Range -->
+                        <div class="mb-8">
+                            <h4 class="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide">Price</h4>
+                            <div class="mb-4">
+                                <span class="text-sm text-gray-600">Rp229,000 - Rp5,999,000</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <input type="number" name="min_price" placeholder="Min Price" value="{{ request('min_price') }}" class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <input type="number" name="max_price" placeholder="Max Price" value="{{ request('max_price') }}" class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                        </div>
+
+                        <!-- Size Filter -->
+                        <div class="mb-8">
+                            <h4 class="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide">Size</h4>
+                            <div class="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                                @php
+                                $sizes = [
+                                    '37.3' => '37.3 (13)',
+                                    '36.7' => '36.7 (13)',
+                                    '42.5' => '42.5 (23)',
+                                    '44.5' => '44.5 (30)',
+                                    '43' => '43 (42)',
+                                    '44' => '44 (74)',
+                                    '44.7' => '44.7 (20)',
+                                    '46' => '46 (17)',
+                                    '42' => '42 (19)',
+                                    '38' => '38 (29)',
+                                    '36' => '36 (21)',
+                                    '38.5' => '38.5 (13)'
+                                ];
+                                @endphp
+                                @foreach($sizes as $size_value => $size_label)
+                                <button type="button" class="size-option border border-gray-200 rounded-lg py-2 px-1 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-size="{{ $size_value }}">
+                                    {{ $size_value }}
+                                </button>
+                                @endforeach
                             </div>
                         </div>
 
@@ -111,25 +235,6 @@
                                 <button type="button" class="condition-tag px-3 py-1 text-xs border border-gray-200 rounded-full hover:border-blue-500 hover:bg-blue-50 transition-all" data-condition="brand_new">Brand New</button>
                                 <button type="button" class="condition-tag px-3 py-1 text-xs border border-gray-200 rounded-full hover:border-blue-500 hover:bg-blue-50 transition-all" data-condition="used">Used</button>
                                 <button type="button" class="condition-tag px-3 py-1 text-xs border border-gray-200 rounded-full hover:border-blue-500 hover:bg-blue-50 transition-all" data-condition="pre_order">Pre-Order</button>
-                            </div>
-                        </div>
-
-                        <!-- Price Range -->
-                        <div class="mb-8">
-                            <h4 class="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide">Price Range</h4>
-                            <div class="flex gap-2">
-                                <input type="number" name="min_price" placeholder="Min Price" class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                <input type="number" name="max_price" placeholder="Max Price" class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                            </div>
-                        </div>
-
-                        <!-- Gender Filter -->
-                        <div class="mb-8">
-                            <h4 class="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide">Gender</h4>
-                            <div class="grid grid-cols-3 gap-2">
-                                <button type="button" class="gender-option border border-gray-200 rounded-lg py-2 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-gender="men">Men</button>
-                                <button type="button" class="gender-option border border-gray-200 rounded-lg py-2 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-gender="women">Women</button>
-                                <button type="button" class="gender-option border border-gray-200 rounded-lg py-2 text-xs text-center hover:border-blue-500 hover:bg-blue-50 transition-all" data-gender="youth">Youth</button>
                             </div>
                         </div>
 
@@ -146,36 +251,13 @@
                             </div>
                         </div>
 
-                        <!-- Brands Filter -->
-                        <div class="mb-8">
-                            <h4 class="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide">Brands</h4>
-                            <div class="max-h-48 overflow-y-auto space-y-2">
-                                <label class="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded">
-                                    <input type="checkbox" name="brands[]" value="nike" class="mr-3">
-                                    <span class="text-sm">Nike</span>
-                                </label>
-                                <label class="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded">
-                                    <input type="checkbox" name="brands[]" value="adidas" class="mr-3">
-                                    <span class="text-sm">Adidas</span>
-                                </label>
-                                <label class="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded">
-                                    <input type="checkbox" name="brands[]" value="puma" class="mr-3">
-                                    <span class="text-sm">Puma</span>
-                                </label>
-                                <label class="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded">
-                                    <input type="checkbox" name="brands[]" value="newbalance" class="mr-3">
-                                    <span class="text-sm">New Balance</span>
-                                </label>
-                                <label class="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded">
-                                    <input type="checkbox" name="brands[]" value="converse" class="mr-3">
-                                    <span class="text-sm">Converse</span>
-                                </label>
-                                <label class="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded">
-                                    <input type="checkbox" name="brands[]" value="vans" class="mr-3">
-                                    <span class="text-sm">Vans</span>
-                                </label>
-                            </div>
-                        </div>
+                        <!-- Preserve existing filters -->
+                        @if(request('category'))
+                            <input type="hidden" name="category" value="{{ request('category') }}">
+                        @endif
+                        @if(request('section'))
+                            <input type="hidden" name="section" value="{{ request('section') }}">
+                        @endif
 
                         <!-- Filter Buttons -->
                         <div class="space-y-3">
@@ -198,11 +280,11 @@
                         <div class="flex items-center space-x-4">
                             <span class="text-gray-600 font-medium">Sort by:</span>
                             <select name="sort" onchange="updateSort(this.value)" class="px-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                <option value="name_az">Name A-Z</option>
-                                <option value="price_low">Price: Low to High</option>
-                                <option value="price_high">Price: High to Low</option>
-                                <option value="latest">Latest</option>
-                                <option value="featured">Featured</option>
+                                <option value="name_az" {{ request('sort') === 'name_az' ? 'selected' : '' }}>Name A-Z</option>
+                                <option value="price_low" {{ request('sort') === 'price_low' ? 'selected' : '' }}>Price: Low to High</option>
+                                <option value="price_high" {{ request('sort') === 'price_high' ? 'selected' : '' }}>Price: High to Low</option>
+                                <option value="latest" {{ request('sort') === 'latest' ? 'selected' : '' }}>Latest</option>
+                                <option value="featured" {{ request('sort') === 'featured' ? 'selected' : '' }}>Featured</option>
                             </select>
                         </div>
                         
@@ -351,6 +433,16 @@
         border-color: #000000;
     }
 
+    .category-pill.special {
+        color: #ff4757;
+        border-color: #ff4757;
+    }
+
+    .category-pill.special.active {
+        background: #ff4757;
+        color: #ffffff;
+    }
+
     /* Filter Sidebar Animation */
     #filterSidebar {
         transition: all 0.3s ease;
@@ -368,12 +460,6 @@
     }
 
     .condition-tag.selected {
-        background-color: #3B82F6;
-        color: white;
-        border-color: #3B82F6;
-    }
-
-    .gender-option.selected {
         background-color: #3B82F6;
         color: white;
         border-color: #3B82F6;
@@ -432,14 +518,6 @@
             });
         });
 
-        // Gender selection (single select)
-        document.querySelectorAll('.gender-option').forEach(button => {
-            button.addEventListener('click', function() {
-                document.querySelectorAll('.gender-option').forEach(btn => btn.classList.remove('selected'));
-                this.classList.add('selected');
-            });
-        });
-
         // Color selection (single select)
         document.querySelectorAll('.color-option').forEach(button => {
             button.addEventListener('click', function() {
@@ -462,6 +540,23 @@
             document.getElementById('gridView').classList.remove('text-blue-600', 'bg-blue-50');
             document.getElementById('gridView').classList.add('text-gray-400');
         });
+
+        // Dynamic subcategory filter based on main category
+        const categoryRadios = document.querySelectorAll('input[name="category"]');
+        categoryRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                // Reload page with new category to show relevant subcategories
+                const form = document.getElementById('filterForm');
+                const formData = new FormData(form);
+                const params = new URLSearchParams();
+                
+                for (let [key, value] of formData.entries()) {
+                    if (value) params.append(key, value);
+                }
+                
+                window.location.href = '?' + params.toString();
+            });
+        });
     });
 
     function updateSort(value) {
@@ -473,4 +568,67 @@
     function clearFilters() {
         window.location = window.location.pathname;
     }
+
+    // Handle size filter selection for form submission
+    function updateSizeFilter() {
+        const selectedSizes = Array.from(document.querySelectorAll('.size-option.selected'))
+            .map(btn => btn.dataset.size);
+        
+        // Remove existing size inputs
+        document.querySelectorAll('input[name="sizes[]"]').forEach(input => input.remove());
+        
+        // Add new size inputs
+        const form = document.getElementById('filterForm');
+        selectedSizes.forEach(size => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'sizes[]';
+            input.value = size;
+            form.appendChild(input);
+        });
+    }
+
+    // Handle condition filter selection for form submission
+    function updateConditionFilter() {
+        const selectedConditions = Array.from(document.querySelectorAll('.condition-tag.selected'))
+            .map(btn => btn.dataset.condition);
+        
+        // Remove existing condition inputs
+        document.querySelectorAll('input[name="conditions[]"]').forEach(input => input.remove());
+        
+        // Add new condition inputs
+        const form = document.getElementById('filterForm');
+        selectedConditions.forEach(condition => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'conditions[]';
+            input.value = condition;
+            form.appendChild(input);
+        });
+    }
+
+    // Handle color filter selection for form submission
+    function updateColorFilter() {
+        const selectedColor = document.querySelector('.color-option.selected');
+        
+        // Remove existing color input
+        document.querySelectorAll('input[name="color"]').forEach(input => input.remove());
+        
+        // Add new color input if selected
+        if (selectedColor) {
+            const form = document.getElementById('filterForm');
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'color';
+            input.value = selectedColor.dataset.color;
+            form.appendChild(input);
+        }
+    }
+
+    // Update filters before form submission
+    document.getElementById('filterForm').addEventListener('submit', function(e) {
+        updateSizeFilter();
+        updateConditionFilter();
+        updateColorFilter();
+    });
 </script>
