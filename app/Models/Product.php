@@ -1,11 +1,9 @@
 <?php
-// File: app/Models/Product.php - PostgreSQL Compatible Version
 
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 
@@ -23,21 +21,6 @@ class Product extends Model
         'sku',
         'category_id',
         'brand',
-        
-        // NEW FIELDS FOR MENU SYSTEM
-        'gender_target',
-        'product_type',
-        'search_keywords',
-        'sale_start_date',
-        'sale_end_date',
-        'is_featured_sale',
-        'available_sizes',
-        'available_colors',
-        'meta_title',
-        'meta_description',
-        'meta_keywords',
-        
-        // EXISTING FIELDS
         'images',
         'features',
         'specifications',
@@ -49,101 +32,153 @@ class Product extends Model
         'dimensions',
         'published_at',
         'meta_data',
+        'gender_target',    // JSON array
+        'product_type',
+        'search_keywords',  // JSON array
+        'sale_start_date',
+        'sale_end_date',
+        'is_featured_sale',
+        'available_sizes',  // JSON array
+        'available_colors', // JSON array
+        'meta_title',
+        'meta_description', 
+        'meta_keywords',    // JSON array
     ];
 
-    protected function casts(): array
+    protected $casts = [
+        'is_active' => 'boolean',
+        'is_featured' => 'boolean',
+        'is_featured_sale' => 'boolean',
+        'price' => 'decimal:2',
+        'sale_price' => 'decimal:2',
+        'weight' => 'decimal:2',
+        'published_at' => 'datetime',
+        'sale_start_date' => 'date',
+        'sale_end_date' => 'date',
+        
+        // JSON fields
+        'images' => 'array',
+        'features' => 'array',
+        'specifications' => 'array',
+        'dimensions' => 'array',
+        'meta_data' => 'array',
+        'gender_target' => 'array',    // Cast as array
+        'search_keywords' => 'array',
+        'available_sizes' => 'array',
+        'available_colors' => 'array',
+        'meta_keywords' => 'array',
+    ];
+
+    protected $attributes = [
+        'is_active' => true,
+        'is_featured' => false,
+        'is_featured_sale' => false,
+        'stock_quantity' => 0,
+        'min_stock_level' => 5,
+    ];
+
+    // Auto generate slug
+    protected static function boot()
     {
-        return [
-            'price' => 'decimal:2',
-            'sale_price' => 'decimal:2',
-            'weight' => 'decimal:2',
-            'is_active' => 'boolean',
-            'is_featured' => 'boolean',
-            'is_featured_sale' => 'boolean',
-            'images' => 'array',
-            'features' => 'array',
-            'specifications' => 'array',
-            'dimensions' => 'array',
-            'meta_data' => 'array',
-            
-            // NEW CASTS
-            'search_keywords' => 'array',
-            'available_sizes' => 'array',
-            'available_colors' => 'array',
-            'meta_keywords' => 'array',
-            'sale_start_date' => 'date',
-            'sale_end_date' => 'date',
-            
-            'published_at' => 'datetime',
-        ];
+        parent::boot();
+
+        static::creating(function ($product) {
+            if (empty($product->slug)) {
+                $product->slug = static::generateUniqueSlug($product->name);
+            }
+        });
+
+        static::updating(function ($product) {
+            if ($product->isDirty('name') && empty($product->getOriginal('slug'))) {
+                $product->slug = static::generateUniqueSlug($product->name);
+            }
+        });
     }
 
-    // ========================================
-    // RELATIONSHIPS
-    // ========================================
+    public static function generateUniqueSlug($name)
+    {
+        $slug = Str::slug($name);
+        $originalSlug = $slug;
+        $counter = 1;
 
+        while (static::where('slug', $slug)->exists()) {
+            $slug = $originalSlug . '-' . $counter;
+            $counter++;
+        }
+
+        return $slug;
+    }
+
+    // Relationships
     public function category()
     {
         return $this->belongsTo(Category::class);
     }
 
-    public function orderItems()
+    // Scopes
+    public function scopeActive($query)
     {
-        return $this->hasMany(OrderItem::class);
+        return $query->where('is_active', true);
     }
 
-    // ========================================
-    // ACCESSORS & MUTATORS
-    // ========================================
-
-    /**
-     * Get the featured image (first image)
-     */
-    public function getFeaturedImageAttribute(): ?string
+    public function scopeFeatured($query)
     {
-        if ($this->images && count($this->images) > 0) {
-            return $this->images[0];
+        return $query->where('is_featured', true);
+    }
+
+    public function scopeOnSale($query)
+    {
+        return $query->whereNotNull('sale_price')->whereRaw('sale_price < price');
+    }
+
+    public function scopeInStock($query)
+    {
+        return $query->where('stock_quantity', '>', 0);
+    }
+
+    public function scopeForGender($query, string $gender)
+    {
+        return $query->whereJsonContains('gender_target', $gender);
+    }
+
+    public function scopeOfType($query, string $type)
+    {
+        return $query->where('product_type', $type);
+    }
+
+    // Accessors
+    public function getFeaturedImageAttribute()
+    {
+        if ($this->images && is_array($this->images) && count($this->images) > 0) {
+            // Cek apakah path sudah full URL atau hanya filename
+            $imagePath = $this->images[0];
+            if (str_starts_with($imagePath, 'http')) {
+                return $imagePath; // Sudah full URL
+            }
+            return Storage::url($imagePath);
         }
-        return null;
+        return asset('images/default-product.png'); // Default image
     }
 
-    /**
-     * Get the featured image URL
-     */
-    public function getFeaturedImageUrlAttribute(): ?string
+    public function getDiscountPercentageAttribute()
     {
-        if ($this->featured_image) {
-            return Storage::url($this->featured_image);
+        if ($this->sale_price && $this->price > 0) {
+            return round((($this->price - $this->sale_price) / $this->price) * 100);
         }
-        return null;
+        return 0;
     }
 
-    /**
-     * Get all image URLs
-     */
-    public function getImageUrlsAttribute(): array
+    public function getIsOnSaleAttribute()
     {
-        if (!$this->images) {
-            return [];
-        }
-
-        return collect($this->images)->map(function ($image) {
-            return Storage::url($image);
-        })->toArray();
+        return $this->sale_price && $this->sale_price < $this->price;
     }
 
-    /**
-     * Get formatted price
-     */
-    public function getFormattedPriceAttribute(): string
+    public function getFormattedPriceAttribute()
     {
         return 'Rp ' . number_format($this->price, 0, ',', '.');
     }
 
-    /**
-     * Get formatted sale price
-     */
-    public function getFormattedSalePriceAttribute(): ?string
+    public function getFormattedSalePriceAttribute()
     {
         if ($this->sale_price) {
             return 'Rp ' . number_format($this->sale_price, 0, ',', '.');
@@ -151,378 +186,81 @@ class Product extends Model
         return null;
     }
 
-    /**
-     * Get the effective price (sale price if available, otherwise regular price)
-     */
-    public function getEffectivePriceAttribute(): float
-    {
-        return $this->sale_price ?? $this->price;
-    }
-
-    /**
-     * Get formatted effective price
-     */
-    public function getFormattedEffectivePriceAttribute(): string
-    {
-        return 'Rp ' . number_format($this->effective_price, 0, ',', '.');
-    }
-
-    /**
-     * Check if product has discount
-     */
-    public function getHasDiscountAttribute(): bool
-    {
-        return !is_null($this->sale_price) && $this->sale_price < $this->price;
-    }
-
-    /**
-     * Get discount percentage
-     */
-    public function getDiscountPercentageAttribute(): ?int
-    {
-        if (!$this->has_discount) {
-            return null;
-        }
-
-        return round((($this->price - $this->sale_price) / $this->price) * 100);
-    }
-
-    /**
-     * Check if product is in stock
-     */
-    public function getInStockAttribute(): bool
-    {
-        return $this->stock_quantity > 0;
-    }
-
-    /**
-     * Check if stock is low
-     */
-    public function getIsLowStockAttribute(): bool
-    {
-        return $this->stock_quantity <= $this->min_stock_level && $this->stock_quantity > 0;
-    }
-
-    /**
-     * Get stock status
-     */
-    public function getStockStatusAttribute(): string
-    {
-        if ($this->stock_quantity === 0) {
-            return 'out_of_stock';
-        } elseif ($this->is_low_stock) {
-            return 'low_stock';
-        } else {
-            return 'in_stock';
-        }
-    }
-
-    /**
-     * Check if sale is currently active
-     */
-    public function getIsSaleActiveAttribute(): bool
-    {
-        if (!$this->sale_price) {
-            return false;
-        }
-
-        $now = now()->toDateString();
-        
-        // If no dates set, sale is active
-        if (!$this->sale_start_date && !$this->sale_end_date) {
-            return true;
-        }
-
-        // Check if current date is within sale period
-        $afterStart = !$this->sale_start_date || $now >= $this->sale_start_date->toDateString();
-        $beforeEnd = !$this->sale_end_date || $now <= $this->sale_end_date->toDateString();
-
-        return $afterStart && $beforeEnd;
-    }
-
-    // ========================================
-    // SCOPES FOR NEW MENU SYSTEM - PostgreSQL Compatible
-    // ========================================
-
-    /**
-     * Scope untuk produk aktif
-     */
-    public function scopeActive(Builder $query): Builder
-    {
-        return $query->where('is_active', true);
-    }
-
-    /**
-     * Scope untuk produk featured
-     */
-    public function scopeFeatured(Builder $query): Builder
-    {
-        return $query->where('is_featured', true);
-    }
-
-    /**
-     * Scope untuk produk yang tersedia (published dan in stock)
-     */
-    public function scopeAvailable(Builder $query): Builder
-    {
-        return $query->where('is_active', true)
-                    ->whereNotNull('published_at')
-                    ->where('published_at', '<=', now())
-                    ->where('stock_quantity', '>', 0);
-    }
-
-    /**
-     * Scope untuk gender targeting (MENS/WOMENS/KIDS menu) - PostgreSQL Compatible
-     */
-    public function scopeForGender(Builder $query, string $gender): Builder
-    {
-        return $query->where(function ($q) use ($gender) {
-            $q->where('gender_target', $gender)
-              ->orWhere('gender_target', 'unisex')
-              ->orWhereHas('category', function ($cat) use ($gender) {
-                  $cat->where('menu_placement', $gender)
-                      ->orWhereJsonContains('secondary_menus', $gender);
-              })
-              ->orWhere('name', 'ilike', "%{$gender}%") // PostgreSQL case-insensitive
-              ->orWhere('description', 'ilike', "%{$gender}%");
-        });
-    }
-
-    /**
-     * Scope untuk accessories (ACCESSORIES menu) - PostgreSQL Compatible
-     */
-    public function scopeAccessories(Builder $query): Builder
-    {
-        $accessoryTypes = ['backpack', 'bag', 'hat', 'cap', 'socks', 'laces', 'care_products', 'accessories'];
-        
-        return $query->where(function ($q) use ($accessoryTypes) {
-            $q->whereIn('product_type', $accessoryTypes)
-              ->orWhereHas('category', function ($cat) {
-                  $cat->where('menu_placement', 'accessories')
-                      ->orWhereJsonContains('secondary_menus', 'accessories');
-              })
-              ->orWhere('name', 'ilike', '%accessories%') // PostgreSQL case-insensitive
-              ->orWhere('name', 'ilike', '%bag%')
-              ->orWhere('name', 'ilike', '%hat%')
-              ->orWhere('name', 'ilike', '%sock%')
-              ->orWhere('name', 'ilike', '%lace%');
-        });
-    }
-
-    /**
-     * Scope untuk produk sale (SALE menu) - PostgreSQL Compatible
-     */
-    public function scopeOnSale(Builder $query): Builder
-    {
-        return $query->whereNotNull('sale_price')
-                    ->whereRaw('sale_price < price') // PostgreSQL compatible
-                    ->where(function ($q) {
-                        $q->whereNull('sale_start_date')
-                          ->orWhere('sale_start_date', '<=', now());
-                    })
-                    ->where(function ($q) {
-                        $q->whereNull('sale_end_date')
-                          ->orWhere('sale_end_date', '>=', now());
-                    });
-    }
-
-    /**
-     * Scope untuk filter berdasarkan brand
-     */
-    public function scopeByBrand(Builder $query, string $brand): Builder
-    {
-        return $query->where('brand', $brand);
-    }
-
-    /**
-     * Scope untuk filter berdasarkan price range
-     */
-    public function scopePriceRange(Builder $query, $minPrice = null, $maxPrice = null): Builder
-    {
-        if ($minPrice) {
-            $query->where('price', '>=', $minPrice);
-        }
-        
-        if ($maxPrice) {
-            $query->where('price', '<=', $maxPrice);
-        }
-
-        return $query;
-    }
-
-    /**
-     * Scope untuk search - PostgreSQL Compatible
-     */
-    public function scopeSearch(Builder $query, string $term): Builder
-    {
-        $searchTerm = '%' . $term . '%';
-        
-        return $query->where(function ($q) use ($searchTerm, $term) {
-            $q->where('name', 'ilike', $searchTerm) // PostgreSQL case-insensitive
-              ->orWhere('description', 'ilike', $searchTerm)
-              ->orWhere('short_description', 'ilike', $searchTerm)
-              ->orWhere('brand', 'ilike', $searchTerm)
-              ->orWhereJsonContains('search_keywords', $term)
-              ->orWhereHas('category', function ($cat) use ($searchTerm) {
-                  $cat->where('name', 'ilike', $searchTerm);
-              });
-        });
-    }
-
-    // ========================================
-    // HELPER METHODS
-    // ========================================
-
-    /**
-     * Check if product matches gender target
-     */
+    // Gender helper methods
     public function isForGender(string $gender): bool
     {
-        return $this->gender_target === $gender || 
-               $this->gender_target === 'unisex' ||
-               $this->category?->menu_placement === $gender ||
-               in_array($gender, $this->category?->secondary_menus ?? []);
+        return $this->gender_target && in_array($gender, $this->gender_target);
     }
 
-    /**
-     * Check if product is accessory
-     */
-    public function isAccessory(): bool
+    public function getGenderLabelsAttribute(): array
     {
-        $accessoryTypes = ['backpack', 'bag', 'hat', 'cap', 'socks', 'laces', 'care_products', 'accessories'];
+        if (!$this->gender_target) return [];
         
-        return in_array($this->product_type, $accessoryTypes) ||
-               $this->category?->menu_placement === 'accessories' ||
-               in_array('accessories', $this->category?->secondary_menus ?? []);
-    }
-
-    /**
-     * Get menu classifications for this product
-     */
-    public function getMenuClassifications(): array
-    {
-        $menus = [];
-        
-        // Gender-based menus
-        if ($this->isForGender('mens')) $menus[] = 'mens';
-        if ($this->isForGender('womens')) $menus[] = 'womens';
-        if ($this->isForGender('kids')) $menus[] = 'kids';
-        
-        // Brand menu (all products with brand)
-        if ($this->brand) $menus[] = 'brand';
-        
-        // Accessories menu
-        if ($this->isAccessory()) $menus[] = 'accessories';
-        
-        // Sale menu
-        if ($this->is_sale_active && $this->sale_price) $menus[] = 'sale';
-        
-        return array_unique($menus);
-    }
-
-    // ========================================
-    // AUTO-GENERATION & HOOKS
-    // ========================================
-
-    protected static function boot()
-    {
-        parent::boot();
-
-        static::creating(function ($product) {
-            // Auto-generate SKU if not provided
-            if (empty($product->sku)) {
-                $product->sku = static::generateSKU($product);
-            }
-
-            // Auto-generate slug if not provided
-            if (empty($product->slug)) {
-                $product->slug = Str::slug($product->name);
-            }
-
-            // Set default published_at if not provided
-            if (empty($product->published_at)) {
-                $product->published_at = now();
-            }
-        });
-
-        static::updating(function ($product) {
-            // Update slug if name changed
-            if ($product->isDirty('name') && empty($product->getOriginal('slug'))) {
-                $product->slug = Str::slug($product->name);
-            }
-        });
-    }
-
-    /**
-     * Generate unique SKU
-     */
-    public static function generateSKU($product)
-    {
-        // Format: BRAND-CATEGORY-RANDOM (e.g., NIKE-RUN-1234)
-        $brand = $product->brand ? strtoupper(substr($product->brand, 0, 4)) : 'PROD';
-        
-        $category = 'GEN';
-        if ($product->category_id) {
-            $categoryModel = Category::find($product->category_id);
-            if ($categoryModel) {
-                $category = strtoupper(substr($categoryModel->name, 0, 3));
-            }
+        $labels = [];
+        foreach ($this->gender_target as $gender) {
+            $labels[] = match($gender) {
+                'mens' => "Men's",
+                'womens' => "Women's",
+                'kids' => 'Kids',
+                default => $gender
+            };
         }
-
-        $random = strtoupper(Str::random(4));
-        $sku = "{$brand}-{$category}-{$random}";
-
-        // Ensure uniqueness
-        $counter = 1;
-        $originalSku = $sku;
-        while (static::where('sku', $sku)->exists()) {
-            $sku = $originalSku . '-' . str_pad($counter, 2, '0', STR_PAD_LEFT);
-            $counter++;
-        }
-
-        return $sku;
+        return $labels;
     }
 
-    /**
-     * Reduce stock quantity
-     */
-    public function reduceStock(int $quantity): bool
+    public function getGenderBadgesAttribute(): string
     {
-        if ($this->stock_quantity >= $quantity) {
-            $this->decrement('stock_quantity', $quantity);
-            return true;
-        }
+        if (!$this->gender_target) return '';
         
-        return false;
+        $badges = [];
+        foreach ($this->gender_target as $gender) {
+            $badges[] = match($gender) {
+                'mens' => '👨 Men\'s',
+                'womens' => '👩 Women\'s',
+                'kids' => '👶 Kids',
+                default => $gender
+            };
+        }
+        return implode(', ', $badges);
     }
 
-    /**
-     * Increase stock quantity
-     */
-    public function increaseStock(int $quantity): void
+    // Static methods for filtering
+    public static function getForMenu(string $menuType)
     {
-        $this->increment('stock_quantity', $quantity);
+        return static::active()
+                    ->inStock()
+                    ->forGender($menuType)
+                    ->with('category')
+                    ->orderBy('is_featured', 'desc')
+                    ->orderBy('created_at', 'desc');
     }
 
-    /**
-     * Check if product can be purchased
-     */
-    public function canBePurchased(int $quantity = 1): bool
+    public static function getFeaturedProducts()
     {
-        return $this->is_active && 
-               $this->published_at <= now() && 
-               $this->stock_quantity >= $quantity;
+        return static::active()
+                    ->featured()
+                    ->inStock()
+                    ->with('category')
+                    ->limit(8)
+                    ->get();
     }
 
-    /**
-     * Get similar products (same category)
-     */
-    public function getSimilarProducts(int $limit = 4)
+    public static function getLatestProducts()
     {
-        return static::where('category_id', $this->category_id)
-                    ->where('id', '!=', $this->id)
-                    ->available()
-                    ->limit($limit)
+        return static::active()
+                    ->inStock()
+                    ->with('category')
+                    ->latest('created_at')
+                    ->limit(12)
+                    ->get();
+    }
+
+    public static function getSaleProducts()
+    {
+        return static::active()
+                    ->onSale()
+                    ->inStock()
+                    ->with('category')
                     ->get();
     }
 }

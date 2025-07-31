@@ -13,6 +13,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\Filter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Schema;
 
 class CategoryResource extends Resource
 {
@@ -23,150 +24,128 @@ class CategoryResource extends Resource
 
     public static function form(Form $form): Form
     {
-        return $form
+        $schema = [
+            // Basic Information Section
+            Forms\Components\Section::make('Category Information')
+                ->description('Basic category details for your sneaker store')
+                ->schema([
+                    Forms\Components\TextInput::make('name')
+                        ->label('Category Name')
+                        ->required()
+                        ->maxLength(255)
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(function (string $context, $state, callable $set) {
+                            if ($context === 'create') {
+                                $set('slug', Str::slug($state));
+                            }
+                        })
+                        ->placeholder('e.g., Basketball Shoes, Running, Lifestyle/Casual')
+                        ->helperText('This is how the category appears in navigation and filters'),
+
+                    Forms\Components\TextInput::make('slug')
+                        ->label('URL Slug')
+                        ->required()
+                        ->maxLength(255)
+                        ->unique(Category::class, 'slug', ignoreRecord: true)
+                        ->helperText('Auto-generated URL-friendly version. Creates: /categories/your-slug'),
+
+                    Forms\Components\Textarea::make('description')
+                        ->label('Category Description')
+                        ->rows(3)
+                        ->columnSpanFull()
+                        ->placeholder('Describe what products belong in this category...')
+                        ->helperText('Description for SEO and category pages'),
+
+                    Forms\Components\FileUpload::make('image')
+                        ->label('Category Image')
+                        ->image()
+                        ->imageEditor()
+                        ->directory('categories')
+                        ->visibility('public')
+                        ->imagePreviewHeight('200')
+                        ->helperText('Optional category banner or icon'),
+                ])->columns(2),
+
+            // Display Settings Section
+            Forms\Components\Section::make('Display Settings')
+                ->description('Control how this category appears on your website')
+                ->schema([
+                    Forms\Components\Toggle::make('is_active')
+                        ->label('Active Category')
+                        ->default(true)
+                        ->helperText('Active categories are visible to customers'),
+
+                    Forms\Components\TextInput::make('sort_order')
+                        ->label('Sort Order')
+                        ->numeric()
+                        ->default(0)
+                        ->helperText('Lower numbers appear first (0 = first position)'),
+                ])->columns(2),
+        ];
+
+        // Add optional fields if columns exist
+        if (Schema::hasColumn('categories', 'show_in_menu')) {
+            $schema[1]['schema'][] = Forms\Components\Toggle::make('show_in_menu')
+                ->label('Show in Navigation Menu')
+                ->default(true)
+                ->helperText('Display in main website navigation');
+        }
+
+        if (Schema::hasColumn('categories', 'is_featured')) {
+            $schema[1]['schema'][] = Forms\Components\Toggle::make('is_featured')
+                ->label('Featured Category')
+                ->default(false)
+                ->helperText('Featured categories appear on homepage');
+        }
+
+        if (Schema::hasColumn('categories', 'menu_placement')) {
+            $schema[1]['schema'][] = Forms\Components\Select::make('menu_placement')
+                ->label('Menu Section')
+                ->options([
+                    'general' => '🌟 General (All Menus)',
+                    'mens' => '👨 MENS Section',
+                    'womens' => '👩 WOMENS Section',
+                    'kids' => '👶 KIDS Section',
+                    'accessories' => '🎒 ACCESSORIES Section',
+                ])
+                ->default('general')
+                ->helperText('Which main menu section should show this category');
+        }
+
+        // Category Analytics Section (for edit mode)
+        $schema[] = Forms\Components\Section::make('Category Statistics')
+            ->description('Product counts and category performance')
             ->schema([
-                Forms\Components\Section::make('Basic Information')
-                    ->schema([
-                        Forms\Components\TextInput::make('name')
-                            ->required()
-                            ->maxLength(255)
-                            ->live(onBlur: true)
-                            ->afterStateUpdated(fn (string $context, $state, callable $set) => 
-                                $context === 'create' ? $set('slug', Str::slug($state)) : null),
+                Forms\Components\Placeholder::make('products_count')
+                    ->label('Total Products')
+                    ->content(function (?Category $record): string {
+                        if (!$record) return '0';
+                        return (string) $record->products()->count();
+                    }),
 
-                        Forms\Components\TextInput::make('slug')
-                            ->required()
-                            ->maxLength(255)
-                            ->unique(Category::class, 'slug', ignoreRecord: true),
+                Forms\Components\Placeholder::make('active_products_count')
+                    ->label('Active Products')
+                    ->content(function (?Category $record): string {
+                        if (!$record) return '0';
+                        return (string) $record->products()->where('is_active', true)->count();
+                    }),
 
-                        Forms\Components\Textarea::make('description')
-                            ->rows(3)
-                            ->columnSpanFull()
-                            ->helperText('Category description for SEO and display'),
+                Forms\Components\Placeholder::make('featured_products_count')
+                    ->label('Featured Products')
+                    ->content(function (?Category $record): string {
+                        if (!$record) return '0';
+                        return (string) $record->products()->where('is_featured', true)->count();
+                    }),
 
-                        Forms\Components\FileUpload::make('image')
-                            ->label('Category Image')
-                            ->image()
-                            ->imageEditor()
-                            ->directory('categories')
-                            ->visibility('public')
-                            ->imagePreviewHeight('200')
-                            ->helperText('Category banner or icon image'),
-                    ])->columns(2),
+                Forms\Components\Placeholder::make('sale_products_count')
+                    ->label('Products on Sale')
+                    ->content(function (?Category $record): string {
+                        if (!$record) return '0';
+                        return (string) $record->products()->whereNotNull('sale_price')->count();
+                    }),
+            ])->columns(4)->hiddenOn('create');
 
-                Forms\Components\Section::make('Menu Classification')
-                    ->description('Configure how this category appears in the new menu system')
-                    ->schema([
-                        Forms\Components\Select::make('menu_placement')
-                            ->label('Primary Menu Placement')
-                            ->options([
-                                'mens' => 'MENS - Male targeted products',
-                                'womens' => 'WOMENS - Female targeted products', 
-                                'kids' => 'KIDS - Children targeted products',
-                                'accessories' => 'ACCESSORIES - Bags, hats, socks, etc',
-                                'general' => 'GENERAL - All menus (unisex)',
-                            ])
-                            ->placeholder('Select primary menu placement')
-                            ->helperText('Where this category primarily appears in navigation')
-                            ->native(true),
-
-                        Forms\Components\CheckboxList::make('secondary_menus')
-                            ->label('Also Show In')
-                            ->options([
-                                'mens' => 'MENS',
-                                'womens' => 'WOMENS',
-                                'kids' => 'KIDS',
-                                'accessories' => 'ACCESSORIES',
-                                'brand' => 'BRAND (if applicable)',
-                            ])
-                            ->helperText('Additional menus where this category can appear')
-                            ->columns(2),
-
-                        Forms\Components\TagsInput::make('category_keywords')
-                            ->label('Search Keywords')
-                            ->placeholder('Add keywords')
-                            ->helperText('Keywords for search and filtering (e.g., sport, casual, formal)')
-                            ->columnSpanFull(),
-                    ]),
-
-                Forms\Components\Section::make('Category Settings')
-                    ->schema([
-                        Forms\Components\Toggle::make('is_active')
-                            ->label('Active')
-                            ->default(true)
-                            ->helperText('Category visible on website'),
-
-                        Forms\Components\Toggle::make('show_in_menu')
-                            ->label('Show in Navigation Menu')
-                            ->default(true)
-                            ->helperText('Display in website navigation'),
-
-                        Forms\Components\Toggle::make('is_featured')
-                            ->label('Featured Category')
-                            ->default(false)
-                            ->helperText('Highlight in homepage and featured sections'),
-
-                        Forms\Components\TextInput::make('sort_order')
-                            ->label('Sort Order')
-                            ->numeric()
-                            ->default(0)
-                            ->helperText('Lower numbers appear first'),
-                    ])->columns(2),
-
-                Forms\Components\Section::make('SEO & Display')
-                    ->schema([
-                        Forms\Components\TextInput::make('meta_title')
-                            ->label('SEO Title')
-                            ->maxLength(60)
-                            ->helperText('Page title for search engines (max 60 chars)'),
-
-                        Forms\Components\Textarea::make('meta_description')
-                            ->label('SEO Description')
-                            ->maxLength(160)
-                            ->rows(3)
-                            ->helperText('Meta description for search engines (max 160 chars)'),
-
-                        Forms\Components\TagsInput::make('meta_keywords')
-                            ->label('SEO Keywords')
-                            ->placeholder('Add keyword')
-                            ->helperText('Keywords for search engine optimization'),
-
-                        Forms\Components\ColorPicker::make('brand_color')
-                            ->label('Brand Color')
-                            ->helperText('Theme color for this category (optional)'),
-                    ])->columns(2),
-
-                Forms\Components\Section::make('Category Analytics')
-                    ->schema([
-                        Forms\Components\Placeholder::make('products_count')
-                            ->label('Total Products')
-                            ->content(function (?Category $record): string {
-                                if (!$record) return '0';
-                                return (string) $record->products()->count();
-                            }),
-
-                        Forms\Components\Placeholder::make('active_products_count')
-                            ->label('Active Products')
-                            ->content(function (?Category $record): string {
-                                if (!$record) return '0';
-                                return (string) $record->products()->where('is_active', true)->count();
-                            }),
-
-                        Forms\Components\Placeholder::make('featured_products_count')
-                            ->label('Featured Products')
-                            ->content(function (?Category $record): string {
-                                if (!$record) return '0';
-                                return (string) $record->products()->where('is_featured', true)->count();
-                            }),
-
-                        Forms\Components\Placeholder::make('sale_products_count')
-                            ->label('Products on Sale')
-                            ->content(function (?Category $record): string {
-                                if (!$record) return '0';
-                                return (string) $record->products()->whereNotNull('sale_price')->count();
-                            }),
-                    ])->columns(4)->hiddenOn('create'),
-            ]);
+        return $form->schema($schema);
     }
 
     public static function table(Table $table): Table
@@ -175,164 +154,101 @@ class CategoryResource extends Resource
             ->columns([
                 Tables\Columns\ImageColumn::make('image')
                     ->size(50)
-                    ->circular(),
+                    ->circular()
+                    ->defaultImageUrl(url('/images/default-category.png')),
 
                 Tables\Columns\TextColumn::make('name')
+                    ->label('Category Name')
                     ->searchable()
                     ->sortable()
-                    ->wrap(),
+                    ->wrap()
+                    ->weight('semibold')
+                    ->description(fn (Category $record): ?string => $record->description),
 
                 Tables\Columns\TextColumn::make('slug')
+                    ->label('URL Slug')
                     ->searchable()
                     ->copyable()
                     ->copyMessage('Slug copied!')
-                    ->color('gray'),
-
-                Tables\Columns\TextColumn::make('menu_placement')
-                    ->label('Primary Menu')
-                    ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'mens' => 'blue',
-                        'womens' => 'pink', 
-                        'kids' => 'yellow',
-                        'accessories' => 'green',
-                        'general' => 'gray',
-                        default => 'gray',
-                    }),
-
-                Tables\Columns\TextColumn::make('secondary_menus')
-                    ->label('Also In')
-                    ->badge()
-                    ->separator(',')
-                    ->limit(20),
+                    ->color('gray')
+                    ->fontFamily('mono')
+                    ->prefix('/categories/'),
 
                 Tables\Columns\TextColumn::make('products_count')
                     ->label('Products')
-                    ->getStateUsing(fn (Category $record): int => $record->products()->count())
+                    ->getStateUsing(function (Category $record): int {
+                        return $record->products()->count();
+                    })
+                    ->alignEnd()
+                    ->sortable()
                     ->badge()
-                    ->color('info'),
+                    ->color('primary'),
 
                 Tables\Columns\TextColumn::make('active_products_count')
                     ->label('Active')
-                    ->getStateUsing(fn (Category $record): int => $record->products()->where('is_active', true)->count())
+                    ->getStateUsing(function (Category $record): int {
+                        return $record->products()->where('is_active', true)->count();
+                    })
+                    ->alignEnd()
                     ->badge()
                     ->color('success'),
 
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Active')
-                    ->boolean(),
-
-                Tables\Columns\IconColumn::make('show_in_menu')
-                    ->label('In Menu')
-                    ->boolean(),
-
-                Tables\Columns\IconColumn::make('is_featured')
-                    ->label('Featured')
-                    ->boolean(),
+                    ->boolean()
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('sort_order')
                     ->label('Order')
                     ->sortable()
-                    ->alignCenter(),
+                    ->alignEnd()
+                    ->badge()
+                    ->color('gray'),
 
                 Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
+                    ->label('Created')
+                    ->dateTime('M j, Y')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                SelectFilter::make('menu_placement')
-                    ->label('Primary Menu')
-                    ->options([
-                        'mens' => 'MENS',
-                        'womens' => 'WOMENS',
-                        'kids' => 'KIDS',
-                        'accessories' => 'ACCESSORIES',
-                        'general' => 'GENERAL',
-                    ]),
-
-                Filter::make('active')
-                    ->label('Active Only')
+                Filter::make('is_active')
+                    ->label('Active Categories')
                     ->query(fn (Builder $query): Builder => $query->where('is_active', true)),
-
-                Filter::make('show_in_menu')
-                    ->label('In Menu Only')
-                    ->query(fn (Builder $query): Builder => $query->where('show_in_menu', true)),
-
-                Filter::make('featured')
-                    ->label('Featured Only')
-                    ->query(fn (Builder $query): Builder => $query->where('is_featured', true)),
 
                 Filter::make('has_products')
                     ->label('Has Products')
                     ->query(fn (Builder $query): Builder => $query->has('products')),
+
+                Filter::make('no_products')
+                    ->label('Empty Categories')
+                    ->query(fn (Builder $query): Builder => $query->doesntHave('products')),
             ])
             ->actions([
-                Tables\Actions\ActionGroup::make([
-                    Tables\Actions\ViewAction::make(),
-                    Tables\Actions\EditAction::make(),
-                    Tables\Actions\DeleteAction::make(),
-                    
-                    Tables\Actions\Action::make('view_products')
-                        ->label('View Products')
-                        ->icon('heroicon-o-cube')
-                        ->url(fn (Category $record): string => "/admin/products?tableFilters[category_id][value]={$record->id}")
-                        ->openUrlInNewTab(),
-                ]),
+                Tables\Actions\ViewAction::make(),
+                Tables\Actions\EditAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->requiresConfirmation()
+                    ->modalDescription('Are you sure you want to delete this category? This will also affect products in this category.'),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
                     
-                    Tables\Actions\BulkAction::make('activate')
-                        ->label('Activate Selected')
-                        ->icon('heroicon-o-check-circle')
+                    Tables\Actions\BulkAction::make('toggle_active')
+                        ->label('Toggle Active')
+                        ->icon('heroicon-m-eye')
                         ->action(function ($records) {
-                            $records->each(function ($record) {
-                                $record->update(['is_active' => true]);
-                            });
-                        })
-                        ->requiresConfirmation()
-                        ->color('success'),
-
-                    Tables\Actions\BulkAction::make('deactivate')
-                        ->label('Deactivate Selected')
-                        ->icon('heroicon-o-x-circle')
-                        ->action(function ($records) {
-                            $records->each(function ($record) {
-                                $record->update(['is_active' => false]);
-                            });
-                        })
-                        ->requiresConfirmation()
-                        ->color('danger'),
-
-                    Tables\Actions\BulkAction::make('add_to_menu')
-                        ->label('Add to Menu')
-                        ->icon('heroicon-o-bars-3')
-                        ->action(function ($records) {
-                            $records->each(function ($record) {
-                                $record->update(['show_in_menu' => true]);
-                            });
-                        })
-                        ->requiresConfirmation()
-                        ->color('info'),
-
-                    Tables\Actions\BulkAction::make('feature')
-                        ->label('Mark as Featured')
-                        ->icon('heroicon-o-star')
-                        ->action(function ($records) {
-                            $records->each(function ($record) {
-                                $record->update(['is_featured' => true]);
-                            });
-                        })
-                        ->requiresConfirmation()
-                        ->color('warning'),
+                            foreach ($records as $record) {
+                                $record->update(['is_active' => !$record->is_active]);
+                            }
+                        }),
                 ]),
             ])
             ->defaultSort('sort_order', 'asc')
-            ->persistSortInSession()
-            ->persistSearchInSession()
-            ->persistFiltersInSession();
+            ->emptyStateHeading('No categories yet')
+            ->emptyStateDescription('Create your first category to start organizing products.')
+            ->emptyStateIcon('heroicon-o-rectangle-stack');
     }
 
     public static function getPages(): array
@@ -340,31 +256,19 @@ class CategoryResource extends Resource
         return [
             'index' => Pages\ListCategories::route('/'),
             'create' => Pages\CreateCategory::route('/create'),
+            'view' => Pages\ViewCategory::route('/{record}'),
             'edit' => Pages\EditCategory::route('/{record}/edit'),
         ];
     }
 
     public static function getNavigationBadge(): ?string
     {
-        return static::getModel()::where('is_active', true)->count();
+        return static::getModel()::count();
     }
 
-    public static function getGlobalSearchEloquentQuery(): Builder
+    public static function getNavigationBadgeColor(): string|array|null
     {
-        return parent::getGlobalSearchEloquentQuery()->with(['products']);
-    }
-
-    public static function getGloballySearchableAttributes(): array
-    {
-        return ['name', 'slug', 'description'];
-    }
-
-    public static function getGlobalSearchResultDetails($record): array
-    {
-        return [
-            'Products' => $record->products()->count() . ' products',
-            'Menu' => ucfirst($record->menu_placement ?? 'Not set'),
-            'Status' => $record->is_active ? 'Active' : 'Inactive',
-        ];
+        $count = static::getModel()::count();
+        return $count > 5 ? 'success' : ($count > 0 ? 'warning' : 'danger');
     }
 }
