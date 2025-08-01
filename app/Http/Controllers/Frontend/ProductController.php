@@ -45,31 +45,33 @@ class ProductController extends Controller
         $stockCounts = $this->getStockCounts();
 
         // Get size options if available_sizes column exists
-        $availableSizes = [];
+        $availableSizes = collect();
         if (Schema::hasColumn('products', 'available_sizes')) {
-            $availableSizes = Product::query()
+            Product::query()
                 ->where('is_active', true)
                 ->whereNotNull('available_sizes')
                 ->get()
-                ->pluck('available_sizes')
-                ->flatten()
-                ->unique()
-                ->sort()
-                ->values();
+                ->each(function ($product) use (&$availableSizes) {
+                    if (is_array($product->available_sizes)) {
+                        $availableSizes = $availableSizes->merge($product->available_sizes);
+                    }
+                });
+            $availableSizes = $availableSizes->unique()->sort()->values();
         }
 
         // Get color options if available_colors column exists
-        $availableColors = [];
+        $availableColors = collect();
         if (Schema::hasColumn('products', 'available_colors')) {
-            $availableColors = Product::query()
+            Product::query()
                 ->where('is_active', true)
                 ->whereNotNull('available_colors')
                 ->get()
-                ->pluck('available_colors')
-                ->flatten()
-                ->unique()
-                ->sort()
-                ->values();
+                ->each(function ($product) use (&$availableColors) {
+                    if (is_array($product->available_colors)) {
+                        $availableColors = $availableColors->merge($product->available_colors);
+                    }
+                });
+            $availableColors = $availableColors->unique()->sort()->values();
         }
 
         return view('frontend.products.index', compact(
@@ -385,7 +387,7 @@ class ProductController extends Controller
     }
 
     /**
-     * Apply all filters to query - SYNCED WITH ADMIN FIELDS
+     * Apply all filters to query - FIXED VERSION
      */
     private function applyAllFilters($query, Request $request)
     {
@@ -394,18 +396,31 @@ class ProductController extends Controller
             $query->where('category_id', $request->category_id);
         }
 
-        // Filter by brand(s) - sesuai dengan field 'brand' di admin
+        // Filter by brand(s) - FIXED VERSION
         if ($request->filled('brand')) {
-            if (is_array($request->brand)) {
-                $query->whereIn('brand', $request->brand);
-            } else {
-                $query->where('brand', $request->brand);
+            $brands = $request->brand;
+            // Ensure brands is always an array
+            if (!is_array($brands)) {
+                $brands = [$brands];
+            }
+            // Filter empty values
+            $brands = array_filter($brands);
+            if (!empty($brands)) {
+                $query->whereIn('brand', $brands);
             }
         }
 
         if ($request->filled('brands')) {
-            $brands = is_array($request->brands) ? $request->brands : [$request->brands];
-            $query->whereIn('brand', $brands);
+            $brands = $request->brands;
+            // Ensure brands is always an array
+            if (!is_array($brands)) {
+                $brands = [$brands];
+            }
+            // Filter empty values
+            $brands = array_filter($brands);
+            if (!empty($brands)) {
+                $query->whereIn('brand', $brands);
+            }
         }
 
         // Filter by gender category (JSON array search) - sesuai dengan 'gender_target'
@@ -457,9 +472,13 @@ class ProductController extends Controller
             $query->whereRaw('COALESCE(sale_price, price) <= ?', [$request->max_price]);
         }
 
-        // Filter by stock availability - sesuai dengan 'stock_quantity'
+        // Filter by stock availability - FIXED VERSION
         if ($request->filled('availability')) {
-            $availability = is_array($request->availability) ? $request->availability : [$request->availability];
+            $availability = $request->availability;
+            // Ensure availability is always an array
+            if (!is_array($availability)) {
+                $availability = [$availability];
+            }
             
             $query->where(function ($q) use ($availability) {
                 if (in_array('in_stock', $availability)) {
@@ -471,35 +490,77 @@ class ProductController extends Controller
             });
         }
 
-        // Filter by sizes - sesuai dengan field 'available_sizes'
+        // Filter by sizes - FIXED VERSION
         if ($request->filled('sizes') && Schema::hasColumn('products', 'available_sizes')) {
-            $sizes = is_array($request->sizes) ? $request->sizes : [$request->sizes];
+            $sizes = $request->sizes;
+            // Ensure sizes is always an array
+            if (!is_array($sizes)) {
+                $sizes = is_string($sizes) ? explode(',', $sizes) : [$sizes];
+            }
+            // Filter empty values
+            $sizes = array_filter($sizes);
             
-            $query->where(function ($q) use ($sizes) {
-                foreach ($sizes as $size) {
-                    $q->orWhereJsonContains('available_sizes', $size);
-                }
-            });
+            if (!empty($sizes)) {
+                $query->where(function ($q) use ($sizes) {
+                    foreach ($sizes as $size) {
+                        $q->orWhereJsonContains('available_sizes', trim($size));
+                    }
+                });
+            }
         }
 
-        // Filter by colors - sesuai dengan field 'available_colors'
+        // Filter by colors - COMPREHENSIVE FIXED VERSION
         if ($request->filled('color') && Schema::hasColumn('products', 'available_colors')) {
-            $query->whereJsonContains('available_colors', $request->color);
-        }
-
-        if ($request->filled('colors') && Schema::hasColumn('products', 'available_colors')) {
-            $colors = is_array($request->colors) ? $request->colors : [$request->colors];
-            
-            $query->where(function ($q) use ($colors) {
-                foreach ($colors as $color) {
-                    $q->orWhereJsonContains('available_colors', $color);
-                }
+            $color = trim($request->color);
+            $query->where(function ($q) use ($color) {
+                $q->whereJsonContains('available_colors', $color)
+                  ->orWhereJsonContains('available_colors', ucfirst(strtolower($color)))
+                  ->orWhereJsonContains('available_colors', strtolower($color))
+                  ->orWhereJsonContains('available_colors', strtoupper($color))
+                  ->orWhere('available_colors', 'LIKE', '%"' . $color . '"%')
+                  ->orWhere('available_colors', 'LIKE', '%"' . ucfirst(strtolower($color)) . '"%')
+                  ->orWhere('available_colors', 'LIKE', '%"' . strtolower($color) . '"%')
+                  ->orWhere('available_colors', 'LIKE', '%"' . strtoupper($color) . '"%');
             });
         }
 
-        // Filter by conditions/features - sesuai dengan field 'features'
+        if (($request->filled('colors') || $request->filled('selected_colors')) && Schema::hasColumn('products', 'available_colors')) {
+            $colors = $request->colors ?? $request->selected_colors;
+            
+            // Ensure colors is always an array
+            if (!is_array($colors)) {
+                $colors = is_string($colors) ? explode(',', $colors) : [$colors];
+            }
+            // Filter empty values and trim whitespace
+            $colors = array_filter(array_map('trim', $colors));
+            
+            if (!empty($colors)) {
+                $query->where(function ($q) use ($colors) {
+                    foreach ($colors as $color) {
+                        $q->orWhere(function ($subQ) use ($color) {
+                            // Try JSON contains first
+                            $subQ->whereJsonContains('available_colors', $color)
+                                 ->orWhereJsonContains('available_colors', ucfirst(strtolower($color)))
+                                 ->orWhereJsonContains('available_colors', strtolower($color))
+                                 ->orWhereJsonContains('available_colors', strtoupper($color))
+                                 // Fallback to LIKE search
+                                 ->orWhere('available_colors', 'LIKE', '%"' . $color . '"%')
+                                 ->orWhere('available_colors', 'LIKE', '%"' . ucfirst(strtolower($color)) . '"%')
+                                 ->orWhere('available_colors', 'LIKE', '%"' . strtolower($color) . '"%')
+                                 ->orWhere('available_colors', 'LIKE', '%"' . strtoupper($color) . '"%');
+                        });
+                    }
+                });
+            }
+        }
+
+        // Filter by conditions/features - FIXED VERSION
         if ($request->filled('conditions') && Schema::hasColumn('products', 'features')) {
-            $conditions = is_array($request->conditions) ? $request->conditions : [$request->conditions];
+            $conditions = $request->conditions;
+            // Ensure conditions is always an array
+            if (!is_array($conditions)) {
+                $conditions = [$conditions];
+            }
             
             $query->where(function ($q) use ($conditions) {
                 foreach ($conditions as $condition) {

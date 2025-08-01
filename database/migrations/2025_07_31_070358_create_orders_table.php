@@ -66,7 +66,7 @@ return new class extends Migration
         Schema::create('order_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('order_id')->constrained('orders')->onDelete('cascade');
-            $table->foreignId('product_id')->nullable()->constrained('products')->onDelete('set null');
+            $table->unsignedBigInteger('product_id')->nullable();
             
             // Product Information (snapshot at time of order)
             $table->string('product_name'); // Store name in case product deleted

@@ -566,7 +566,8 @@
                 <a href="/products?category=mens" class="mobile-menu-item">MENS</a>
                 <a href="/products?category=womens" class="mobile-menu-item">WOMENS</a>
                 <a href="/products?category=kids" class="mobile-menu-item">KIDS</a>
-                <a href="/products?filter=brand" class="mobile-menu-item">BRAND</a>
+                <a href="/products?brands[]=Nike" class="mobile-menu-item">NIKE</a>
+                <a href="/products?brands[]=Adidas" class="mobile-menu-item">ADIDAS</a>
                 <a href="/products?category=accessories" class="mobile-menu-item">ACCESSORIES</a>
                 <a href="/products?sale=true" class="mobile-menu-item special">SALE</a>
             </div>
@@ -714,7 +715,7 @@
                     </a>
                 </div>
 
-                <!-- BRAND Dropdown - Click to toggle -->
+                <!-- BRAND Dropdown - FIXED VERSION -->
                 <div class="nav-item-container">
                     <button @click="toggleDropdown('brand')" 
                             class="nav-main-btn" 
@@ -723,26 +724,47 @@
                         <i class="fas fa-chevron-down dropdown-arrow"></i>
                     </button>
                     <div class="nav-dropdown" :class="{ 'show': isDropdownActive('brand') }">
-                        <a href="/products?brand=nike" class="dropdown-item">
+                        <a href="/products?brands[]=Nike" class="dropdown-item">
                             <i class="fab fa-nike mr-2"></i>NIKE
                         </a>
-                        <a href="/products?brand=adidas" class="dropdown-item">
+                        <a href="/products?brands[]=Adidas" class="dropdown-item">
                             <i class="fab fa-adidas mr-2"></i>ADIDAS
                         </a>
-                        <a href="/products?brand=puma" class="dropdown-item">
+                        <a href="/products?brands[]=Puma" class="dropdown-item">
                             <i class="fab fa-puma mr-2"></i>PUMA
                         </a>
-                        <a href="/products?brand=converse" class="dropdown-item">
+                        <a href="/products?brands[]=Converse" class="dropdown-item">
                             <i class="fas fa-star mr-2"></i>CONVERSE
                         </a>
-                        <a href="/products?brand=vans" class="dropdown-item">
+                        <a href="/products?brands[]=Vans" class="dropdown-item">
                             <i class="fas fa-skateboard mr-2"></i>VANS
                         </a>
-                        <a href="/products?brand=newbalance" class="dropdown-item">
+                        <a href="/products?brands[]=New Balance" class="dropdown-item">
                             <i class="fas fa-balance-scale mr-2"></i>NEW BALANCE
                         </a>
-                        <a href="/products?brand=jordan" class="dropdown-item">
+                        <a href="/products?brands[]=Jordan" class="dropdown-item">
                             <i class="fas fa-basketball-ball mr-2"></i>JORDAN
+                        </a>
+                        <a href="/products?brands[]=Reebok" class="dropdown-item">
+                            <i class="fas fa-running mr-2"></i>REEBOK
+                        </a>
+                        <a href="/products?brands[]=ASICS" class="dropdown-item">
+                            <i class="fas fa-shoe-prints mr-2"></i>ASICS
+                        </a>
+                        <a href="/products?brands[]=Under Armour" class="dropdown-item">
+                            <i class="fas fa-shield-alt mr-2"></i>UNDER ARMOUR
+                        </a>
+                        <a href="/products?brands[]=Skechers" class="dropdown-item">
+                            <i class="fas fa-walking mr-2"></i>SKECHERS
+                        </a>
+                        <a href="/products?brands[]=Fila" class="dropdown-item">
+                            <i class="fas fa-mountain mr-2"></i>FILA
+                        </a>
+                        <a href="/products?brands[]=DC Shoes" class="dropdown-item">
+                            <i class="fas fa-skateboard mr-2"></i>DC SHOES
+                        </a>
+                        <a href="/products?brands[]=Timberland" class="dropdown-item">
+                            <i class="fas fa-tree mr-2"></i>TIMBERLAND
                         </a>
                     </div>
                 </div>

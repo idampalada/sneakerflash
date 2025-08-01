@@ -41,8 +41,8 @@
         </div>
     </section>
 
-    <!-- Active Filters Display -->
-    @if(request()->hasAny(['category', 'type', 'brands', 'availability', 'min_price', 'max_price', 'sale', 'featured']))
+    <!-- Active Filters Display - IMPROVED DESIGN -->
+    @if(request()->hasAny(['category', 'type', 'brands', 'availability', 'min_price', 'max_price', 'sale', 'featured', 'colors', 'selected_colors', 'sizes', 'selected_sizes']))
     <section class="bg-gray-50 py-4 border-b border-gray-200">
         <div class="container mx-auto px-4">
             <div class="flex items-center space-x-3 flex-wrap gap-2">
@@ -50,9 +50,9 @@
                 
                 <!-- Category Filter Badge -->
                 @if(request('category'))
-                    <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                    <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
                         <span class="mr-2">{{ strtoupper(request('category')) }}</span>
-                        <button onclick="removeFilter('category')" class="ml-1 hover:text-blue-600">
+                        <button onclick="removeFilter('category')" class="ml-1 hover:text-gray-900 transition-colors">
                             <i class="fas fa-times text-xs"></i>
                         </button>
                     </div>
@@ -60,9 +60,9 @@
 
                 <!-- Type Filter Badge -->
                 @if(request('type'))
-                    <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                    <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
                         <span class="mr-2">{{ ucfirst(str_replace('_', ' ', request('type'))) }}</span>
-                        <button onclick="removeFilter('type')" class="ml-1 hover:text-green-600">
+                        <button onclick="removeFilter('type')" class="ml-1 hover:text-gray-900 transition-colors">
                             <i class="fas fa-times text-xs"></i>
                         </button>
                     </div>
@@ -71,10 +71,10 @@
                 <!-- Brand Filter Badges -->
                 @if(request('brands'))
                     @foreach((array)request('brands') as $brand)
-                        <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                        <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
                             <i class="fas fa-tag mr-1"></i>
                             <span class="mr-2">{{ strtoupper($brand) }}</span>
-                            <button onclick="removeBrandFilter('{{ $brand }}')" class="ml-1 hover:text-purple-600">
+                            <button onclick="removeBrandFilter('{{ $brand }}')" class="ml-1 hover:text-gray-900 transition-colors">
                                 <i class="fas fa-times text-xs"></i>
                             </button>
                         </div>
@@ -83,13 +83,13 @@
 
                 <!-- Price Range Badge -->
                 @if(request('min_price') || request('max_price'))
-                    <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                    <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
                         <i class="fas fa-dollar-sign mr-1"></i>
                         <span class="mr-2">
                             Rp{{ request('min_price') ? number_format(request('min_price'), 0, ',', '.') : '0' }} - 
                             Rp{{ request('max_price') ? number_format(request('max_price'), 0, ',', '.') : '∞' }}
                         </span>
-                        <button onclick="removePriceFilter()" class="ml-1 hover:text-yellow-600">
+                        <button onclick="removePriceFilter()" class="ml-1 hover:text-gray-900 transition-colors">
                             <i class="fas fa-times text-xs"></i>
                         </button>
                     </div>
@@ -97,10 +97,21 @@
 
                 <!-- Sale Badge -->
                 @if(request('sale'))
-                    <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
+                    <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
                         <i class="fas fa-percent mr-1"></i>
                         <span class="mr-2">ON SALE</span>
-                        <button onclick="removeFilter('sale')" class="ml-1 hover:text-red-600">
+                        <button onclick="removeFilter('sale')" class="ml-1 hover:text-gray-900 transition-colors">
+                            <i class="fas fa-times text-xs"></i>
+                        </button>
+                    </div>
+                @endif
+
+                <!-- Featured Badge -->
+                @if(request('featured'))
+                    <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                        <i class="fas fa-star mr-1"></i>
+                        <span class="mr-2">FEATURED</span>
+                        <button onclick="removeFilter('featured')" class="ml-1 hover:text-gray-900 transition-colors">
                             <i class="fas fa-times text-xs"></i>
                         </button>
                     </div>
@@ -109,21 +120,64 @@
                 <!-- Availability Badges -->
                 @if(request('availability'))
                     @foreach((array)request('availability') as $status)
-                        <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
+                        <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
                             <i class="fas fa-{{ $status === 'in_stock' ? 'check-circle' : 'times-circle' }} mr-1"></i>
                             <span class="mr-2">{{ $status === 'in_stock' ? 'In Stock' : 'Out of Stock' }}</span>
-                            <button onclick="removeAvailabilityFilter('{{ $status }}')" class="ml-1 hover:text-gray-600">
+                            <button onclick="removeAvailabilityFilter('{{ $status }}')" class="ml-1 hover:text-gray-900 transition-colors">
                                 <i class="fas fa-times text-xs"></i>
                             </button>
                         </div>
                     @endforeach
                 @endif
 
-                <!-- Clear All Button -->
-                <button onclick="clearFilters()" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors">
-                    <i class="fas fa-broom mr-1"></i>
-                    Clear All
-                </button>
+                <!-- Colors Badges -->
+                @if(request('colors') || request('selected_colors'))
+                    @php
+                        $selectedColors = request('colors') ?? request('selected_colors');
+                        if (is_string($selectedColors)) {
+                            $selectedColors = explode(',', $selectedColors);
+                        }
+                        $selectedColors = is_array($selectedColors) ? $selectedColors : [];
+                    @endphp
+                    @foreach($selectedColors as $color)
+                        @if(trim($color))
+                            <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                                <i class="fas fa-palette mr-1"></i>
+                                <span class="mr-2">{{ ucfirst(trim($color)) }}</span>
+                                <button onclick="removeColorFilter('{{ trim($color) }}')" class="ml-1 hover:text-gray-900 transition-colors">
+                                    <i class="fas fa-times text-xs"></i>
+                                </button>
+                            </div>
+                        @endif
+                    @endforeach
+                @endif
+
+                <!-- Sizes Badges -->
+                @if(request('sizes') || request('selected_sizes'))
+                    @php
+                        $selectedSizes = request('sizes') ?? request('selected_sizes');
+                        if (is_string($selectedSizes)) {
+                            $selectedSizes = explode(',', $selectedSizes);
+                        }
+                        $selectedSizes = is_array($selectedSizes) ? $selectedSizes : [];
+                    @endphp
+                    @foreach($selectedSizes as $size)
+                        @if(trim($size))
+                            <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                                <i class="fas fa-ruler mr-1"></i>
+                                <span class="mr-2">Size {{ trim($size) }}</span>
+                                <button onclick="removeSizeFilter('{{ trim($size) }}')" class="ml-1 hover:text-gray-900 transition-colors">
+                                    <i class="fas fa-times text-xs"></i>
+                                </button>
+                            </div>
+                        @endif
+                    @endforeach
+                @endif
+
+                <!-- Reset Text Link (No Button Style) -->
+                <span onclick="clearFilters()" class="text-sm text-gray-500 hover:text-gray-700 cursor-pointer transition-colors flex-shrink-0 ml-4">
+                    Reset
+                </span>
             </div>
         </div>
     </section>
@@ -881,6 +935,59 @@
         const url = new URL(window.location);
         url.searchParams.delete('min_price');
         url.searchParams.delete('max_price');
+        window.location = url;
+    }
+
+    // Additional filter removal functions for colors and sizes
+    function removeColorFilter(color) {
+        const url = new URL(window.location);
+        
+        // Handle colors[] parameter
+        const colors = url.searchParams.getAll('colors[]');
+        const filteredColors = colors.filter(c => c !== color);
+        
+        url.searchParams.delete('colors[]');
+        filteredColors.forEach(c => url.searchParams.append('colors[]', c));
+        
+        // Handle selected_colors parameter (comma-separated)
+        const selectedColors = url.searchParams.get('selected_colors');
+        if (selectedColors) {
+            const colorArray = selectedColors.split(',');
+            const filteredColorArray = colorArray.filter(c => c.trim() !== color);
+            
+            if (filteredColorArray.length > 0) {
+                url.searchParams.set('selected_colors', filteredColorArray.join(','));
+            } else {
+                url.searchParams.delete('selected_colors');
+            }
+        }
+        
+        window.location = url;
+    }
+
+    function removeSizeFilter(size) {
+        const url = new URL(window.location);
+        
+        // Handle sizes[] parameter
+        const sizes = url.searchParams.getAll('sizes[]');
+        const filteredSizes = sizes.filter(s => s !== size);
+        
+        url.searchParams.delete('sizes[]');
+        filteredSizes.forEach(s => url.searchParams.append('sizes[]', s));
+        
+        // Handle selected_sizes parameter (comma-separated)
+        const selectedSizes = url.searchParams.get('selected_sizes');
+        if (selectedSizes) {
+            const sizeArray = selectedSizes.split(',');
+            const filteredSizeArray = sizeArray.filter(s => s.trim() !== size);
+            
+            if (filteredSizeArray.length > 0) {
+                url.searchParams.set('selected_sizes', filteredSizeArray.join(','));
+            } else {
+                url.searchParams.delete('selected_sizes');
+            }
+        }
+        
         window.location = url;
     }
 
