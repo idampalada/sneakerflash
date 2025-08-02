@@ -117,7 +117,7 @@ return [
     | Supported drivers: "file", "cache"
     |
     */
-
+'default_origin_city' => env('DEFAULT_ORIGIN_CITY', 151),
     'maintenance' => [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),

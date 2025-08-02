@@ -16,7 +16,7 @@
             </div>
             <div class="step" id="step-2">
                 <div class="step-number">2</div>
-                <div class="step-title">Addresses</div>
+                <div class="step-title">Delivery Address</div>
             </div>
             <div class="step" id="step-3">
                 <div class="step-number">3</div>
@@ -43,6 +43,11 @@
                 {{ session('error') }}
             </div>
         @endif
+
+        <!-- Connection Status -->
+        <div id="connection-status" class="mb-4 p-3 rounded-lg border hidden">
+            <span id="status-text"></span>
+        </div>
 
         <form action="{{ route('checkout.store') }}" method="POST" id="checkout-form">
             @csrf
@@ -74,12 +79,16 @@
                                 <label class="block text-sm font-medium text-gray-700 mb-2">Social title</label>
                                 <div class="flex space-x-4">
                                     <label class="flex items-center">
-                                        <input type="radio" name="social_title" value="Mr." class="mr-2">
+                                        <input type="radio" name="social_title" value="Mr." class="mr-2" {{ old('social_title') == 'Mr.' ? 'checked' : '' }}>
                                         <span class="text-sm">Mr.</span>
                                     </label>
                                     <label class="flex items-center">
-                                        <input type="radio" name="social_title" value="Mrs." class="mr-2">
+                                        <input type="radio" name="social_title" value="Mrs." class="mr-2" {{ old('social_title') == 'Mrs.' ? 'checked' : '' }}>
                                         <span class="text-sm">Mrs.</span>
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="radio" name="social_title" value="Ms." class="mr-2" {{ old('social_title') == 'Ms.' ? 'checked' : '' }}>
+                                        <span class="text-sm">Ms.</span>
                                     </label>
                                 </div>
                             </div>
@@ -91,7 +100,6 @@
                                     <input type="text" name="first_name" id="first_name" required
                                            value="{{ old('first_name') }}"
                                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
-                                    <p class="text-xs text-gray-500 mt-1">Only letters and the dot (.) character, followed by a space, are allowed.</p>
                                 </div>
                                 
                                 <div>
@@ -99,7 +107,6 @@
                                     <input type="text" name="last_name" id="last_name" required
                                            value="{{ old('last_name') }}"
                                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
-                                    <p class="text-xs text-gray-500 mt-1">Only letters and the dot (.) character, followed by a space, are allowed.</p>
                                 </div>
                             </div>
                             
@@ -111,15 +118,34 @@
                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
                             </div>
                             
+                            <!-- Phone -->
+                            <div class="mb-4">
+                                <label for="phone" class="block text-sm font-medium text-gray-700 mb-2">Phone *</label>
+                                <input type="tel" name="phone" id="phone" required
+                                       value="{{ old('phone') }}"
+                                       placeholder="08xxxxxxxxxx"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <!-- Birthdate -->
+                            <div class="mb-4">
+                                <label for="birthdate" class="block text-sm font-medium text-gray-700 mb-2">
+                                    <span class="text-gray-400">Optional</span> Birthdate
+                                </label>
+                                <input type="date" name="birthdate" id="birthdate"
+                                       value="{{ old('birthdate') }}"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
                             @if(!Auth::check())
                                 <!-- Create Account Option -->
                                 <div class="mb-4">
                                     <label class="flex items-center">
                                         <input type="checkbox" name="create_account" id="create_account" value="1" 
-                                               onchange="togglePassword()" class="mr-3">
+                                               onchange="togglePassword()" class="mr-3" {{ old('create_account') ? 'checked' : '' }}>
                                         <span class="text-sm font-medium">Create an account (optional)</span>
                                     </label>
-                                    <p class="text-xs text-gray-500 mt-1">And save time on your next order!</p>
+                                    <p class="text-xs text-gray-500 mt-1">Save time on your next order!</p>
                                 </div>
                                 
                                 <!-- Password Fields -->
@@ -138,31 +164,13 @@
                                 </div>
                             @endif
                             
-                            <!-- Phone -->
-                            <div class="mb-4">
-                                <label for="phone" class="block text-sm font-medium text-gray-700 mb-2">Phone *</label>
-                                <input type="tel" name="phone" id="phone" required
-                                       value="{{ old('phone') }}"
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
-                            </div>
-                            
-                            <!-- Birthdate -->
-                            <div class="mb-4">
-                                <label for="birthdate" class="block text-sm font-medium text-gray-700 mb-2">
-                                    <span class="text-gray-400">Optional</span> Birthdate
-                                </label>
-                                <input type="date" name="birthdate" id="birthdate"
-                                       value="{{ old('birthdate') }}"
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
-                            </div>
-                            
                             <!-- Newsletter -->
                             <div class="mb-4">
                                 <label class="flex items-start">
-                                    <input type="checkbox" name="newsletter_subscribe" value="1" class="mr-3 mt-1">
+                                    <input type="checkbox" name="newsletter_subscribe" value="1" class="mr-3 mt-1" {{ old('newsletter_subscribe') ? 'checked' : '' }}>
                                     <div>
                                         <span class="text-sm font-medium">Sign up for our newsletter</span>
-                                        <p class="text-xs text-gray-500 italic">*Subscribing to our newsletter, get exclusive offers, early discounts, and other interesting programs*</p>
+                                        <p class="text-xs text-gray-500 italic">*Get exclusive offers and early discounts*</p>
                                     </div>
                                 </label>
                             </div>
@@ -173,7 +181,7 @@
                                     <input type="checkbox" name="privacy_accepted" id="privacy_accepted" required class="mr-3 mt-1">
                                     <div>
                                         <span class="text-sm font-medium">Customer data privacy *</span>
-                                        <p class="text-xs text-gray-500 italic">*The personal data you provide is used to answer queries, process orders or allow access to specific information. You have the right to modify and delete all the personal information found in the "My Account" page.*</p>
+                                        <p class="text-xs text-gray-500 italic">*I agree to the processing of my personal data and accept the privacy policy.*</p>
                                     </div>
                                 </label>
                             </div>
@@ -185,64 +193,63 @@
                         </div>
                     </div>
 
-                    <!-- Step 2: Addresses -->
+                    <!-- Step 2: Delivery Address -->
                     <div class="checkout-section hidden" id="section-2">
                         <div class="bg-white rounded-lg shadow-md p-6">
-                            <h2 class="text-xl font-semibold text-gray-900 mb-6">Addresses</h2>
-                            <p class="text-sm text-gray-600 mb-6">The selected address will be used both as your personal address (for invoice) and as your delivery address.</p>
+                            <h2 class="text-xl font-semibold text-gray-900 mb-6">Delivery Address</h2>
+                            <p class="text-sm text-gray-600 mb-6">Search and select your delivery location using RajaOngkir V2.</p>
                             
                             <div class="space-y-4">
+                                <!-- Address -->
                                 <div>
-                                    <label for="address" class="block text-sm font-medium text-gray-700 mb-2">Address *</label>
+                                    <label for="address" class="block text-sm font-medium text-gray-700 mb-2">Street Address *</label>
                                     <textarea name="address" id="address" rows="3" required
-                                              placeholder="Full address"
+                                              placeholder="Enter your complete street address"
                                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">{{ old('address') }}</textarea>
                                 </div>
                                 
+                                <!-- Location Search -->
+                                <div class="relative">
+                                    <label for="destination_search" class="block text-sm font-medium text-gray-700 mb-2">
+                                        Search Your Location * 
+                                        <span class="text-xs text-gray-500">(Type at least 2 characters)</span>
+                                    </label>
+                                    <input type="text" 
+                                           id="destination_search" 
+                                           placeholder="e.g., kebayoran lama, jakarta selatan"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                                           autocomplete="off">
+                                    
+                                    <!-- Search Results -->
+                                    <div id="search-results" class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                        <!-- Results will be populated here -->
+                                    </div>
+                                </div>
+                                
+                                <!-- Selected Destination Display -->
+                                <div id="selected-destination" class="hidden p-4 bg-green-50 border border-green-200 rounded-md">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <h4 class="font-medium text-green-800">Selected Location:</h4>
+                                            <p id="selected-destination-text" class="text-sm text-green-700"></p>
+                                        </div>
+                                        <button type="button" onclick="clearDestination()" class="text-red-600 hover:text-red-800 text-sm">
+                                            Change
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Hidden fields for destination -->
+                                <input type="hidden" name="destination_id" id="destination_id" required>
+                                <input type="hidden" name="destination_label" id="destination_label" required>
+                                
+                                <!-- Postal Code -->
                                 <div>
-                                    <label for="postal_code" class="block text-sm font-medium text-gray-700 mb-2">Zip/Postal Code *</label>
+                                    <label for="postal_code" class="block text-sm font-medium text-gray-700 mb-2">Postal Code *</label>
                                     <input type="text" name="postal_code" id="postal_code" required
                                            value="{{ old('postal_code') }}"
+                                           placeholder="e.g., 12310"
                                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
-                                </div>
-                                
-                                <div>
-                                    <label for="country" class="block text-sm font-medium text-gray-700 mb-2">Country *</label>
-                                    <select name="country" id="country" required
-                                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
-                                        <option value="Indonesia" selected>Indonesia</option>
-                                    </select>
-                                </div>
-                                
-                                <div>
-                                    <label for="province_id" class="block text-sm font-medium text-gray-700 mb-2">State *</label>
-                                    <select name="province_id" id="province_id" required
-                                            onchange="loadCities(this.value)"
-                                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
-                                        <option value="">Please choose</option>
-                                        @if(!empty($provinces))
-                                            @foreach($provinces as $province)
-                                                <option value="{{ $province['province_id'] }}">
-                                                    {{ $province['province'] }}
-                                                </option>
-                                            @endforeach
-                                        @else
-                                            <option value="6">DKI Jakarta</option>
-                                            <option value="9">Jawa Barat</option>
-                                            <option value="10">Jawa Tengah</option>
-                                            <option value="11">Jawa Timur</option>
-                                            <option value="1">Bali</option>
-                                        @endif
-                                    </select>
-                                </div>
-                                
-                                <div>
-                                    <label for="city_id" class="block text-sm font-medium text-gray-700 mb-2">City *</label>
-                                    <select name="city_id" id="city_id" required
-                                            onchange="calculateShipping()"
-                                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
-                                        <option value="">Select City</option>
-                                    </select>
                                 </div>
                             </div>
                             
@@ -251,7 +258,7 @@
                                         class="flex-1 bg-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-400 transition-colors font-medium">
                                     Previous
                                 </button>
-                                <button type="button" onclick="nextStep(3)" 
+                                <button type="button" onclick="nextStep(3)" id="continue-step-2"
                                         class="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium">
                                     Continue
                                 </button>
@@ -263,13 +270,21 @@
                     <div class="checkout-section hidden" id="section-3">
                         <div class="bg-white rounded-lg shadow-md p-6">
                             <h2 class="text-xl font-semibold text-gray-900 mb-6">Shipping Method</h2>
+                            <p class="text-sm text-gray-600 mb-4">Package weight: <strong>{{ $totalWeight ?? 1000 }}g</strong></p>
                             
-                            <div id="shipping-options" class="space-y-3 min-h-[200px]">
-                                <p class="text-gray-500">Please select your city to see shipping options</p>
+                            <div id="shipping-loading" class="hidden p-4 text-center">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                <p class="text-sm text-gray-600 mt-2">Calculating shipping options...</p>
                             </div>
                             
-                            <input type="hidden" name="shipping_method" id="shipping_method">
-                            <input type="hidden" name="shipping_cost" id="shipping_cost" value="0">
+                            <div id="shipping-options" class="space-y-3 min-h-[150px]">
+                                <div class="p-4 text-center text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
+                                    <p>📍 Please select your delivery location first</p>
+                                </div>
+                            </div>
+                            
+                            <input type="hidden" name="shipping_method" id="shipping_method" required>
+                            <input type="hidden" name="shipping_cost" id="shipping_cost" value="0" required>
                             
                             <div class="flex space-x-4 mt-8">
                                 <button type="button" onclick="prevStep(2)" 
@@ -350,6 +365,23 @@
                     <div class="bg-white rounded-lg shadow-md p-6 sticky top-4">
                         <h2 class="text-xl font-semibold text-gray-900 mb-4">Order Summary</h2>
                         
+                        <!-- Cart Items Preview -->
+                        <div class="mb-4 max-h-40 overflow-y-auto">
+                            @foreach($cartItems as $item)
+                                <div class="flex items-center space-x-3 py-2 border-b border-gray-100 last:border-b-0">
+                                    <div class="w-12 h-12 bg-gray-200 rounded flex-shrink-0">
+                                        @if($item['image'])
+                                            <img src="{{ $item['image'] }}" alt="{{ $item['name'] }}" class="w-full h-full object-cover rounded">
+                                        @endif
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm font-medium text-gray-900 truncate">{{ $item['name'] }}</p>
+                                        <p class="text-xs text-gray-500">Qty: {{ $item['quantity'] }} × Rp {{ number_format($item['price'], 0, ',', '.') }}</p>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                        
                         <div class="mb-4">
                             <p class="text-sm text-gray-600">{{ count($cartItems) }} Item{{ count($cartItems) > 1 ? 's' : '' }}</p>
                         </div>
@@ -364,21 +396,22 @@
                                 <span class="text-gray-600">Shipping:</span>
                                 <span class="font-semibold" id="shipping-display">Rp 0</span>
                             </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Tax (11%):</span>
+                                <span class="font-semibold" id="tax-display">Rp {{ number_format($subtotal * 0.11, 0, ',', '.') }}</span>
+                            </div>
                             <div class="border-t pt-2">
                                 <div class="flex justify-between">
-                                    <span class="text-gray-600">Total (tax incl.):</span>
-                                    <span class="text-2xl font-bold" id="total-display">Rp {{ number_format($subtotal, 0, ',', '.') }}</span>
-                                </div>
-                                <div class="text-right">
-                                    <span class="text-sm text-gray-500">Included taxes:</span>
-                                    <span class="text-sm font-medium" id="tax-display">Rp 0</span>
+                                    <span class="text-gray-900 font-semibold">Total:</span>
+                                    <span class="text-2xl font-bold text-blue-600" id="total-display">Rp {{ number_format($subtotal * 1.11, 0, ',', '.') }}</span>
                                 </div>
                             </div>
                         </div>
                         
-                        <!-- Hidden inputs -->
+                        <!-- Hidden inputs for JavaScript -->
                         <input type="hidden" id="subtotal-value" value="{{ $subtotal }}">
                         <input type="hidden" id="tax-rate" value="0.11">
+                        <input type="hidden" id="total-weight" value="{{ $totalWeight ?? 1000 }}">
                         
                         <!-- Security Badge -->
                         <div class="mt-6 text-center">
@@ -403,11 +436,13 @@
 .step.active .step-number {
     background-color: #3b82f6;
     color: white;
+    border-color: #3b82f6;
 }
 
 .step.completed .step-number {
     background-color: #10b981;
     color: white;
+    border-color: #10b981;
 }
 
 .step-number {
@@ -422,11 +457,13 @@
     margin: 0 auto 0.5rem;
     font-weight: 600;
     border: 3px solid #e5e7eb;
+    transition: all 0.3s ease;
 }
 
 .step-title {
     font-size: 0.875rem;
     color: #6b7280;
+    transition: all 0.3s ease;
 }
 
 .step.active .step-title {
@@ -434,206 +471,46 @@
     font-weight: 600;
 }
 
+.step.completed .step-title {
+    color: #10b981;
+    font-weight: 500;
+}
+
 .checkout-section.active {
     display: block !important;
 }
+
+#search-results .search-result-item {
+    padding: 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #e5e7eb;
+    transition: background-color 0.2s ease;
+}
+
+#search-results .search-result-item:hover {
+    background-color: #f3f4f6;
+}
+
+#search-results .search-result-item:last-child {
+    border-bottom: none;
+}
+
+.shipping-option {
+    transition: all 0.2s ease;
+}
+
+.shipping-option:hover {
+    background-color: #f8fafc;
+    border-color: #3b82f6;
+}
+
+.shipping-option input[type="radio"]:checked + .shipping-content {
+    border-color: #3b82f6;
+    background-color: #eff6ff;
+}
 </style>
 
-<script>
-let currentStep = 1;
-const subtotal = parseFloat(document.getElementById('subtotal-value').value) || 0;
-const taxRate = parseFloat(document.getElementById('tax-rate').value) || 0.11;
-
-function nextStep(step) {
-    if (validateCurrentStep()) {
-        showStep(step);
-    }
-}
-
-function prevStep(step) {
-    showStep(step);
-}
-
-function showStep(step) {
-    // Hide all sections
-    document.querySelectorAll('.checkout-section').forEach(section => {
-        section.classList.remove('active');
-        section.classList.add('hidden');
-    });
-    
-    // Reset all step indicators
-    document.querySelectorAll('.step').forEach(stepEl => {
-        stepEl.classList.remove('active', 'completed');
-    });
-    
-    // Mark completed steps
-    for (let i = 1; i < step; i++) {
-        document.getElementById(`step-${i}`).classList.add('completed');
-    }
-    
-    // Show current step
-    document.getElementById(`section-${step}`).classList.remove('hidden');
-    document.getElementById(`section-${step}`).classList.add('active');
-    document.getElementById(`step-${step}`).classList.add('active');
-    
-    currentStep = step;
-}
-
-function validateCurrentStep() {
-    switch (currentStep) {
-        case 1:
-            const firstName = document.getElementById('first_name').value.trim();
-            const lastName = document.getElementById('last_name').value.trim();
-            const email = document.getElementById('email').value.trim();
-            const phone = document.getElementById('phone').value.trim();
-            const privacyAccepted = document.getElementById('privacy_accepted').checked;
-            
-            if (!firstName || !lastName || !email || !phone || !privacyAccepted) {
-                alert('Please fill in all required fields and accept the privacy policy.');
-                return false;
-            }
-            break;
-            
-        case 2:
-            const address = document.getElementById('address').value.trim();
-            const provinceId = document.getElementById('province_id').value;
-            const cityId = document.getElementById('city_id').value;
-            const postalCode = document.getElementById('postal_code').value.trim();
-            
-            if (!address || !provinceId || !cityId || !postalCode) {
-                alert('Please fill in all required address fields.');
-                return false;
-            }
-            break;
-            
-        case 3:
-            const shippingMethod = document.getElementById('shipping_method').value;
-            if (!shippingMethod) {
-                alert('Please select a shipping method.');
-                return false;
-            }
-            break;
-    }
-    return true;
-}
-
-function togglePassword() {
-    const checkbox = document.getElementById('create_account');
-    const passwordFields = document.getElementById('password-fields');
-    
-    if (checkbox.checked) {
-        passwordFields.classList.remove('hidden');
-    } else {
-        passwordFields.classList.add('hidden');
-    }
-}
-
-function loadCities(provinceId) {
-    const citySelect = document.getElementById('city_id');
-    
-    if (!provinceId) {
-        citySelect.innerHTML = '<option value="">Select City</option>';
-        return;
-    }
-    
-    citySelect.innerHTML = '<option value="">Loading cities...</option>';
-    
-    fetch(`/checkout/cities?province_id=${provinceId}`)
-        .then(response => response.json())
-        .then(cities => {
-            citySelect.innerHTML = '<option value="">Select City</option>';
-            
-            if (cities && cities.length > 0) {
-                cities.forEach(city => {
-                    const option = document.createElement('option');
-                    option.value = city.city_id;
-                    option.textContent = city.city_name;
-                    citySelect.appendChild(option);
-                });
-            }
-        })
-        .catch(error => {
-            console.error('Error loading cities:', error);
-            citySelect.innerHTML = '<option value="">Error loading cities</option>';
-        });
-}
-
-function calculateShipping() {
-    const cityId = document.getElementById('city_id').value;
-    const shippingOptions = document.getElementById('shipping-options');
-    
-    if (!cityId) {
-        shippingOptions.innerHTML = '<p class="text-gray-500">Please select your city to see shipping options</p>';
-        return;
-    }
-    
-    shippingOptions.innerHTML = '<p class="text-gray-500">Calculating shipping options...</p>';
-    
-    fetch(`/checkout/shipping`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-        },
-        body: JSON.stringify({
-            destination_city: cityId,
-            weight: 1000
-        })
-    })
-    .then(response => response.json())
-    .then(options => {
-        if (options.length === 0) {
-            shippingOptions.innerHTML = '<p class="text-red-500">No shipping options available for this location</p>';
-            return;
-        }
-        
-        let html = '';
-        options.forEach((option, index) => {
-            html += `
-                <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                    <input type="radio" name="shipping_option" value="${option.courier}_${option.service}" 
-                           data-cost="${option.cost}" data-description="${option.courier} - ${option.service}"
-                           onchange="selectShipping(this)" ${index === 0 ? 'checked' : ''}
-                           class="mr-3">
-                    <div class="flex-1">
-                        <div class="font-medium">${option.courier} - ${option.service}</div>
-                        <div class="text-sm text-gray-600">${option.description}</div>
-                        <div class="text-sm text-gray-600">Estimated delivery: ${option.formatted_etd}</div>
-                    </div>
-                    <div class="font-semibold text-blue-600">${option.formatted_cost}</div>
-                </label>
-            `;
-        });
-        
-        shippingOptions.innerHTML = html;
-        
-        // Auto-select first option
-        if (options.length > 0) {
-            document.getElementById('shipping_method').value = options[0].courier + ' - ' + options[0].service;
-            document.getElementById('shipping_cost').value = options[0].cost;
-            updateTotals(options[0].cost);
-        }
-    })
-    .catch(error => {
-        console.error('Error calculating shipping:', error);
-        shippingOptions.innerHTML = '<p class="text-red-500">Error calculating shipping. Please try again.</p>';
-    });
-}
-
-function selectShipping(radio) {
-    document.getElementById('shipping_method').value = radio.dataset.description;
-    document.getElementById('shipping_cost').value = radio.dataset.cost;
-    updateTotals(parseInt(radio.dataset.cost));
-}
-
-function updateTotals(shippingCost) {
-    const tax = subtotal * taxRate;
-    const total = subtotal + shippingCost + tax;
-    
-    document.getElementById('shipping-display').textContent = 'Rp ' + shippingCost.toLocaleString('id-ID');
-    document.getElementById('tax-display').textContent = 'Rp ' + Math.round(tax).toLocaleString('id-ID');
-    document.getElementById('total-display').textContent = 'Rp ' + Math.round(total).toLocaleString('id-ID');
-}
-</script>
+<!-- Load the separated JavaScript file -->
+<script src="{{ asset('js/simple-checkout.js') }}"></script>
 
 @endsection

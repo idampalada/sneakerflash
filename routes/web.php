@@ -75,16 +75,19 @@ Route::get('/password/reset', function() {
 })->name('password.request');
 
 // =====================================
-// CHECKOUT ROUTES (Guest & Authenticated)
+// CHECKOUT ROUTES (Guest & Authenticated) - FIXED FOR RAJAONGKIR V2
 // =====================================
 
 // Main checkout routes
 Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout.index');
 Route::post('/checkout', [CheckoutController::class, 'store'])->name('checkout.store');
 
-// AJAX routes for checkout
-Route::get('/checkout/cities', [CheckoutController::class, 'getCities'])->name('checkout.cities');
+// FIXED: Search-based AJAX routes for checkout (RajaOngkir V2)
+Route::get('/checkout/search-destinations', [CheckoutController::class, 'searchDestinations'])->name('checkout.search-destinations');
 Route::post('/checkout/shipping', [CheckoutController::class, 'calculateShipping'])->name('checkout.shipping');
+
+// LEGACY: Old routes (kept for backward compatibility)
+Route::get('/checkout/cities', [CheckoutController::class, 'getCities'])->name('checkout.cities');
 
 // Checkout completion routes
 Route::get('/checkout/success/{orderNumber}', [CheckoutController::class, 'success'])->name('checkout.success');
@@ -149,9 +152,6 @@ Route::get('/search', [ProductController::class, 'search'])->name('search');
 // Product filters
 Route::get('/filter', [ProductController::class, 'filter'])->name('products.filter');
 
-// PERBAIKAN: Route untuk brand dengan parameter (HAPUS YANG KONFLIK)
-// Route::get('/brands/{brand}', [ProductController::class, 'byBrand'])->name('products.brand.single');
-
 // =====================================
 // STATIC PAGES
 // =====================================
@@ -215,6 +215,22 @@ Route::prefix('api')->group(function() {
         // Newsletter subscription logic
         return response()->json(['success' => true, 'message' => 'Subscribed successfully!']);
     })->name('api.newsletter');
+    
+    // =====================================
+    // RAJAONGKIR V2 API ROUTES - ADDED
+    // =====================================
+    
+    // RajaOngkir V2 destination search (alternative endpoint)
+    Route::get('/rajaongkir/search', [CheckoutController::class, 'searchDestinations'])->name('api.rajaongkir.search');
+    
+    // RajaOngkir V2 shipping calculation (alternative endpoint)
+    Route::post('/rajaongkir/shipping', [CheckoutController::class, 'calculateShipping'])->name('api.rajaongkir.shipping');
+    
+    // RajaOngkir V2 test connection
+    Route::get('/rajaongkir/test', function() {
+        $service = new \App\Services\RajaOngkirService();
+        return response()->json($service->testConnection());
+    })->name('api.rajaongkir.test');
 });
 
 // =====================================
@@ -244,8 +260,14 @@ Route::prefix('debug')->group(function() {
             'routes' => [
                 'checkout.index' => route('checkout.index'),
                 'checkout.store' => route('checkout.store'),
-                'checkout.cities' => route('checkout.cities'),
+                'checkout.search-destinations' => route('checkout.search-destinations'),
                 'checkout.shipping' => route('checkout.shipping'),
+                'checkout.cities' => route('checkout.cities'), // Legacy
+            ],
+            'rajaongkir_config' => [
+                'api_key' => config('services.rajaongkir.api_key'),
+                'base_url' => config('services.rajaongkir.base_url'),
+                'working_endpoints' => config('services.rajaongkir.working_endpoints')
             ]
         ]);
     });
@@ -325,6 +347,66 @@ Route::prefix('debug')->group(function() {
             })
         ]);
     });
+
+    // =====================================
+    // RAJAONGKIR V2 DEBUG ROUTES - ADDED
+    // =====================================
+    
+    Route::get('/rajaongkir', function() {
+        $service = new \App\Services\RajaOngkirService();
+        $config = $service->getConfig();
+        $testConnection = $service->testConnection();
+        
+        return response()->json([
+            'service_config' => $config,
+            'connection_test' => $testConnection,
+            'env_config' => [
+                'api_key' => config('services.rajaongkir.api_key'),
+                'base_url' => config('services.rajaongkir.base_url'),
+                'timeout' => config('services.rajaongkir.timeout'),
+            ],
+            'available_routes' => [
+                'search-destinations' => route('checkout.search-destinations'),
+                'calculate-shipping' => route('checkout.shipping'),
+                'api-search' => route('api.rajaongkir.search'),
+                'api-shipping' => route('api.rajaongkir.shipping'),
+                'api-test' => route('api.rajaongkir.test'),
+            ]
+        ]);
+    });
+    
+    Route::get('/rajaongkir/provinces', function() {
+        $service = new \App\Services\RajaOngkirService();
+        $provinces = $service->getProvinces();
+        
+        return response()->json([
+            'total_provinces' => count($provinces),
+            'provinces' => $provinces,
+            'sample_province' => $provinces[0] ?? null
+        ]);
+    });
+    
+    Route::get('/rajaongkir/search/{term}', function($term) {
+        $service = new \App\Services\RajaOngkirService();
+        $results = $service->searchDestinations($term, 5);
+        
+        return response()->json([
+            'search_term' => $term,
+            'total_results' => count($results),
+            'results' => $results,
+            'sample_result' => $results[0] ?? null
+        ]);
+    });
+    
+    Route::get('/rajaongkir/major-cities', function() {
+        $service = new \App\Services\RajaOngkirService();
+        $cities = $service->getMajorCities();
+        
+        return response()->json([
+            'total_cities' => count($cities),
+            'cities' => $cities
+        ]);
+    });
 });
 
 // =====================================
@@ -344,7 +426,55 @@ Route::get('/product/{slug}', function($slug) {
     return redirect()->route('products.show', $slug);
 });
 
+// =====================================
+// RAJAONGKIR V2 TESTING ROUTES - ADDED
+// =====================================
+
+Route::prefix('rajaongkir-test')->group(function() {
+    // Quick test page
+    Route::get('/', function() {
+        return view('debug.rajaongkir-test', [
+            'api_key' => config('services.rajaongkir.api_key'),
+            'base_url' => config('services.rajaongkir.base_url')
+        ]);
+    })->name('rajaongkir.test.page');
+    
+    // Test provinces endpoint
+    Route::get('/provinces', function() {
+        $service = new \App\Services\RajaOngkirService();
+        return $service->getProvinces();
+    })->name('rajaongkir.test.provinces');
+    
+    // Test search endpoint
+    Route::get('/search', function() {
+        $search = request('q', 'jakarta');
+        $service = new \App\Services\RajaOngkirService();
+        return $service->searchDestinations($search, 10);
+    })->name('rajaongkir.test.search');
+    
+    // Test shipping calculation
+    Route::get('/shipping', function() {
+        $service = new \App\Services\RajaOngkirService();
+        return $service->calculateShipping('17473', '17474', 1000, 'jne');
+    })->name('rajaongkir.test.shipping');
+});
+
 // 404 handling for specific paths
 Route::fallback(function() {
     abort(404);
+});
+Route::prefix('api')->group(function() {
+    Route::get('/google-maps/config', function() {
+        return response()->json([
+            'api_key' => env('GOOGLE_MAPS_API_KEY'),
+            'default_location' => [
+                'lat' => env('STORE_DEFAULT_LAT', -6.2088),
+                'lng' => env('STORE_DEFAULT_LNG', 106.8456)
+            ],
+            'default_zoom' => env('GOOGLE_MAPS_DEFAULT_ZOOM', 13),
+            'country_restriction' => env('GOOGLE_MAPS_COUNTRY', 'ID'),
+        ]);
+    })->name('api.google.maps.config');
+    
+    Route::get('/store/location', [CheckoutController::class, 'getStoreOrigin'])->name('api.store.location');
 });
