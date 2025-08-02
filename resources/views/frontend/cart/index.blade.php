@@ -17,7 +17,10 @@
         <div class="flex justify-between items-center">
             <h1 class="text-3xl font-bold text-gray-900">Shopping Cart</h1>
             <div class="text-gray-600">
-                {{ $cartItems->count() }} items
+                @php
+                    $itemCount = isset($cartItems) ? $cartItems->count() : 0;
+                @endphp
+                {{ $itemCount }} items
             </div>
         </div>
     </div>
@@ -35,7 +38,10 @@
                                 <!-- Product Image -->
                                 <div class="flex-shrink-0">
                                     @if($item['image'])
-                                        <img src="{{ Storage::url($item['image']) }}" 
+                                        @php
+                                            $imageUrl = Storage::url($item['image']);
+                                        @endphp
+                                        <img src="{{ $imageUrl }}" 
                                              alt="{{ $item['name'] }}"
                                              class="w-24 h-24 object-cover rounded-xl">
                                     @else
@@ -57,25 +63,37 @@
                                     
                                     <!-- Price Display -->
                                     <div class="flex items-center space-x-2">
-                                        @if($item['price'] < $item['original_price'])
+                                        @php
+                                            $currentPrice = $item['price'];
+                                            $originalPrice = $item['original_price'];
+                                            $formattedPrice = number_format($currentPrice, 0, ',', '.');
+                                            $formattedOriginalPrice = number_format($originalPrice, 0, ',', '.');
+                                        @endphp
+                                        
+                                        @if($currentPrice < $originalPrice)
                                             <span class="text-lg font-bold text-red-600">
-                                                Rp {{ number_format($item['price'], 0, ',', '.') }}
+                                                Rp {{ $formattedPrice }}
                                             </span>
                                             <span class="text-sm text-gray-400 line-through">
-                                                Rp {{ number_format($item['original_price'], 0, ',', '.') }}
+                                                Rp {{ $formattedOriginalPrice }}
                                             </span>
                                         @else
                                             <span class="text-lg font-bold text-gray-900">
-                                                Rp {{ number_format($item['price'], 0, ',', '.') }}
+                                                Rp {{ $formattedPrice }}
                                             </span>
                                         @endif
                                     </div>
 
-                                    <!-- Stock Status -->
-                                    @if($item['stock'] > 0)
+                                    <!-- Stock Status - FIXED -->
+                                    @php
+                                        $stockQuantity = $item['stock'];
+                                        $isInStock = $stockQuantity > 0;
+                                    @endphp
+                                    
+                                    @if($isInStock)
                                         <p class="text-xs text-green-600 mt-1">
                                             <i class="fas fa-check-circle mr-1"></i>
-                                            In Stock ({{ $item['stock'] }} left)
+                                            In Stock ({{ $stockQuantity }} left)
                                         </p>
                                     @else
                                         <p class="text-xs text-red-600 mt-1">
@@ -85,14 +103,21 @@
                                     @endif
                                 </div>
 
-                                <!-- Quantity Controls - BAGIAN UTAMA -->
+                                <!-- Quantity Controls -->
                                 <div class="flex flex-col items-center space-y-4">
                                     <div class="flex items-center space-x-0 border border-gray-200 rounded-lg overflow-hidden">
                                         <!-- DECREASE BUTTON -->
+                                        @php
+                                            $currentQuantity = $item['quantity'];
+                                            $maxStock = $item['stock'];
+                                            $decreaseDisabled = $currentQuantity <= 1 ? 'disabled' : '';
+                                            $increaseDisabled = $currentQuantity >= $maxStock ? 'disabled' : '';
+                                        @endphp
+                                        
                                         <button type="button" 
                                                 onclick="decreaseQuantity({{ $item['id'] }})"
                                                 class="decrease-btn w-10 h-10 bg-gray-50 hover:bg-gray-100 flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                {{ $item['quantity'] <= 1 ? 'disabled' : '' }}
+                                                {{ $decreaseDisabled }}
                                                 data-product-id="{{ $item['id'] }}">
                                             <i class="fas fa-minus text-xs text-gray-600"></i>
                                         </button>
@@ -100,18 +125,18 @@
                                         <!-- QUANTITY INPUT -->
                                         <input type="number" 
                                                id="quantity-{{ $item['id'] }}"
-                                               value="{{ $item['quantity'] }}" 
+                                               value="{{ $currentQuantity }}" 
                                                min="1"
-                                               max="{{ $item['stock'] }}"
+                                               max="{{ $maxStock }}"
                                                class="quantity-input w-16 h-10 text-center border-0 focus:outline-none text-sm font-medium"
                                                data-product-id="{{ $item['id'] }}"
-                                               data-original-value="{{ $item['quantity'] }}">
+                                               data-original-value="{{ $currentQuantity }}">
                                         
                                         <!-- INCREASE BUTTON -->
                                         <button type="button" 
                                                 onclick="increaseQuantity({{ $item['id'] }})"
                                                 class="increase-btn w-10 h-10 bg-gray-50 hover:bg-gray-100 flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                {{ $item['quantity'] >= $item['stock'] ? 'disabled' : '' }}
+                                                {{ $increaseDisabled }}
                                                 data-product-id="{{ $item['id'] }}">
                                             <i class="fas fa-plus text-xs text-gray-600"></i>
                                         </button>
@@ -120,23 +145,33 @@
                                     <!-- Subtotal -->
                                     <div class="text-center">
                                         <p class="text-sm text-gray-500">Subtotal</p>
+                                        @php
+                                            $subtotal = $item['subtotal'];
+                                            $formattedSubtotal = number_format($subtotal, 0, ',', '.');
+                                        @endphp
                                         <p class="font-bold text-gray-900" id="subtotal-{{ $item['id'] }}">
-                                            Rp {{ number_format($item['subtotal'], 0, ',', '.') }}
+                                            Rp {{ $formattedSubtotal }}
                                         </p>
                                     </div>
                                 </div>
 
                                 <!-- Remove Button -->
                                 <div class="flex flex-col space-y-2">
+                                    @php
+                                        $productName = addslashes($item['name']);
+                                    @endphp
                                     <button type="button" 
-                                            onclick="removeFromCart({{ $item['id'] }}, `{{ addslashes($item['name']) }}`)"
+                                            onclick="removeFromCart({{ $item['id'] }}, '{{ $productName }}')"
                                             class="text-red-600 hover:text-red-800 p-2 rounded-lg hover:bg-red-50 transition-all"
                                             title="Remove from cart">
                                         <i class="fas fa-trash text-lg"></i>
                                     </button>
                                     
                                     @if($item['slug'])
-                                        <a href="{{ route('products.show', $item['slug']) }}" 
+                                        @php
+                                            $productUrl = route('products.show', $item['slug']);
+                                        @endphp
+                                        <a href="{{ $productUrl }}" 
                                            class="text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-50 transition-all"
                                            title="View product">
                                             <i class="fas fa-eye text-lg"></i>
@@ -150,7 +185,10 @@
 
                 <!-- Cart Actions -->
                 <div class="mt-6 flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0 bg-white rounded-2xl p-6 border border-gray-100">
-                    <a href="{{ route('products.index') }}" class="flex items-center text-blue-600 hover:text-blue-800 font-medium transition-colors">
+                    @php
+                        $productsUrl = route('products.index');
+                    @endphp
+                    <a href="{{ $productsUrl }}" class="flex items-center text-blue-600 hover:text-blue-800 font-medium transition-colors">
                         <i class="fas fa-arrow-left mr-2"></i>Continue Shopping
                     </a>
                     
@@ -176,14 +214,20 @@
                     <h2 class="text-xl font-semibold text-gray-900 mb-6">Order Summary</h2>
                     
                     <div class="space-y-4 mb-6">
+                        @php
+                            $totalItems = $cartItems->count();
+                            $totalQuantity = $cartItems->sum('quantity');
+                            $formattedTotal = number_format($total, 0, ',', '.');
+                        @endphp
+                        
                         <div class="flex justify-between text-sm">
-                            <span class="text-gray-600">Items ({{ $cartItems->count() }}):</span>
-                            <span class="font-medium">{{ $cartItems->sum('quantity') }} pcs</span>
+                            <span class="text-gray-600">Items ({{ $totalItems }}):</span>
+                            <span class="font-medium">{{ $totalQuantity }} pcs</span>
                         </div>
                         
                         <div class="flex justify-between">
                             <span class="text-gray-600">Subtotal:</span>
-                            <span class="font-semibold" id="cartTotal">Rp {{ number_format($total, 0, ',', '.') }}</span>
+                            <span class="font-semibold" id="cartTotal">Rp {{ $formattedTotal }}</span>
                         </div>
                         
                         <div class="flex justify-between text-sm text-gray-500">
@@ -199,7 +243,7 @@
                         <div class="border-t pt-4">
                             <div class="flex justify-between text-lg font-bold">
                                 <span>Total:</span>
-                                <span id="finalTotal">Rp {{ number_format($total, 0, ',', '.') }}</span>
+                                <span id="finalTotal">Rp {{ $formattedTotal }}</span>
                             </div>
                         </div>
                     </div>
@@ -240,16 +284,22 @@
                 <h2 class="text-2xl font-semibold text-gray-600 mb-4">Your cart is empty</h2>
                 <p class="text-gray-500 mb-8">Looks like you haven't added any items to your cart yet. Start browsing our amazing products!</p>
                 <div class="space-y-4">
-                    <a href="{{ route('products.index') }}" 
+                    @php
+                        $productsUrl = route('products.index');
+                        $saleUrl = route('products.sale');
+                        $featuredUrl = route('products.index', ['featured' => '1']);
+                    @endphp
+                    
+                    <a href="{{ $productsUrl }}" 
                        class="inline-block bg-black text-white px-8 py-3 rounded-xl hover:bg-gray-800 transition-colors font-medium">
                         <i class="fas fa-search mr-2"></i>Start Shopping
                     </a>
                     <div class="flex justify-center space-x-4 text-sm">
-                        <a href="{{ route('products.sale') }}" class="text-red-600 hover:text-red-700 transition-colors">
+                        <a href="{{ $saleUrl }}" class="text-red-600 hover:text-red-700 transition-colors">
                             <i class="fas fa-percent mr-1"></i>
                             Sale Items
                         </a>
-                        <a href="{{ route('products.index', ['featured' => '1']) }}" class="text-yellow-600 hover:text-yellow-700 transition-colors">
+                        <a href="{{ $featuredUrl }}" class="text-yellow-600 hover:text-yellow-700 transition-colors">
                             <i class="fas fa-star mr-1"></i>
                             Featured Products
                         </a>
@@ -281,10 +331,13 @@
 
 <!-- Hidden data for JavaScript -->
 <script id="cartData" type="application/json">
-{
-    "checkoutUrl": "{{ route('checkout.index') }}",
-    "csrfToken": "{{ csrf_token() }}"
-}
+@php
+    $cartData = [
+        'checkoutUrl' => route('checkout.index'),
+        'csrfToken' => csrf_token()
+    ];
+@endphp
+{!! json_encode($cartData) !!}
 </script>
 
 <style>
@@ -645,13 +698,26 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     };
 
-    // Proceed to checkout
+    // Proceed to checkout - FIXED STOCK CHECK
     window.proceedToCheckout = function() {
-        const outOfStockItems = document.querySelectorAll('.cart-item .text-red-600');
-        if (outOfStockItems.length > 0) {
+        // Check for items with zero stock
+        const cartItems = document.querySelectorAll('.cart-item');
+        let hasOutOfStockItems = false;
+        
+        cartItems.forEach(item => {
+            const quantityInput = item.querySelector('.quantity-input');
+            const maxStock = parseInt(quantityInput.getAttribute('max')) || 0;
+            
+            if (maxStock <= 0) {
+                hasOutOfStockItems = true;
+            }
+        });
+        
+        if (hasOutOfStockItems) {
             showToast('Please remove out of stock items before checkout', 'error');
             return;
         }
+        
         window.location.href = checkoutUrl;
     };
 

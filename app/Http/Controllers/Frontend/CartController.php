@@ -40,15 +40,20 @@ class CartController extends Controller
                 return back()->with('error', 'Product is not available');
             }
             
-            // Check stock - PERBAIKAN: pastikan stock_quantity > 0
-            if (!$product->stock_quantity || $product->stock_quantity < $request->quantity) {
+            // IMPROVED STOCK CHECK
+            $currentStock = $product->stock_quantity ?? 0;
+            if ($currentStock <= 0 || $currentStock < $request->quantity) {
+                $message = $currentStock <= 0 
+                    ? 'Product is out of stock' 
+                    : "Insufficient stock available. Only {$currentStock} items left.";
+                    
                 if ($request->ajax()) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Insufficient stock available. Only ' . $product->stock_quantity . ' items left.'
+                        'message' => $message
                     ], 400);
                 }
-                return back()->with('error', 'Insufficient stock available. Only ' . $product->stock_quantity . ' items left.');
+                return back()->with('error', $message);
             }
 
             $cart = Session::get('cart', []);
@@ -59,7 +64,7 @@ class CartController extends Controller
                 // Update quantity if product already in cart
                 $newQuantity = $cart[$productId]['quantity'] + $quantity;
                 
-                if ($newQuantity > $product->stock_quantity) {
+                if ($newQuantity > $currentStock) {
                     if ($request->ajax()) {
                         return response()->json([
                             'success' => false,
@@ -70,8 +75,10 @@ class CartController extends Controller
                 }
                 
                 $cart[$productId]['quantity'] = $newQuantity;
+                // Update stock info when adding
+                $cart[$productId]['stock'] = $currentStock;
             } else {
-                // Add new product to cart - PERBAIKAN: ambil data lengkap dari database
+                // Add new product to cart
                 $cart[$productId] = [
                     'name' => $product->name,
                     'price' => $product->sale_price ?: $product->price,
@@ -79,7 +86,7 @@ class CartController extends Controller
                     'quantity' => $quantity,
                     'image' => $product->images[0] ?? null,
                     'slug' => $product->slug,
-                    'stock' => $product->stock_quantity, // PENTING: ambil dari database
+                    'stock' => $currentStock, // CURRENT STOCK FROM DATABASE
                     'brand' => $product->brand ?? '',
                     'category' => $product->category->name ?? ''
                 ];
@@ -130,7 +137,7 @@ class CartController extends Controller
                 return back()->with('error', 'Product not found in cart');
             }
 
-            // PERBAIKAN: selalu ambil data product terbaru dari database
+            // ALWAYS GET FRESH PRODUCT DATA
             $product = Product::find($id);
             
             if (!$product || !$product->is_active) {
@@ -143,21 +150,34 @@ class CartController extends Controller
                 return back()->with('error', 'Product is no longer available');
             }
             
-            if ($request->quantity > $product->stock_quantity) {
+            // CHECK CURRENT STOCK
+            $currentStock = $product->stock_quantity ?? 0;
+            
+            if ($currentStock <= 0) {
                 if ($request->ajax()) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Quantity exceeds available stock (' . $product->stock_quantity . ' left)'
+                        'message' => 'Product is out of stock'
                     ], 400);
                 }
-                return back()->with('error', 'Quantity exceeds available stock (' . $product->stock_quantity . ' left)');
+                return back()->with('error', 'Product is out of stock');
+            }
+            
+            if ($request->quantity > $currentStock) {
+                if ($request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Quantity exceeds available stock ({$currentStock} left)"
+                    ], 400);
+                }
+                return back()->with('error', "Quantity exceeds available stock ({$currentStock} left)");
             }
 
-            // Update cart dengan data terbaru
+            // Update cart with fresh data
             $cart[$id]['quantity'] = $request->quantity;
             $cart[$id]['price'] = $product->sale_price ?: $product->price;
             $cart[$id]['original_price'] = $product->price;
-            $cart[$id]['stock'] = $product->stock_quantity; // Update stock info
+            $cart[$id]['stock'] = $currentStock; // UPDATE WITH CURRENT STOCK
             
             Session::put('cart', $cart);
             
@@ -171,7 +191,7 @@ class CartController extends Controller
                     'cart_count' => $this->getCartItemCount(),
                     'subtotal' => ($product->sale_price ?: $product->price) * $request->quantity,
                     'total' => $total,
-                    'stock' => $product->stock_quantity
+                    'stock' => $currentStock
                 ]);
             }
             
@@ -271,9 +291,14 @@ class CartController extends Controller
         $cartItems = collect();
         
         foreach ($cart as $id => $details) {
-            // PERBAIKAN: ambil data product terbaru untuk memastikan stock akurat
+            // ALWAYS GET FRESH PRODUCT DATA FOR ACCURATE STOCK
             $product = Product::find($id);
             $currentStock = $product ? $product->stock_quantity : 0;
+            
+            // Remove items that are no longer available
+            if (!$product || !$product->is_active) {
+                continue;
+            }
             
             // Ensure all required keys exist with defaults
             $cartItems->push([
@@ -281,13 +306,13 @@ class CartController extends Controller
                 'name' => $details['name'] ?? 'Unknown Product',
                 'price' => $details['price'] ?? 0,
                 'original_price' => $details['original_price'] ?? ($details['price'] ?? 0),
-                'quantity' => $details['quantity'] ?? 1,
+                'quantity' => min($details['quantity'] ?? 1, $currentStock), // Ensure quantity doesn't exceed stock
                 'image' => $details['image'] ?? null,
                 'slug' => $details['slug'] ?? '',
                 'brand' => $details['brand'] ?? '',
                 'category' => $details['category'] ?? '',
-                'stock' => $currentStock, // GUNAKAN STOCK TERBARU
-                'subtotal' => ($details['price'] ?? 0) * ($details['quantity'] ?? 1)
+                'stock' => $currentStock, // ALWAYS USE FRESH STOCK DATA
+                'subtotal' => ($details['price'] ?? 0) * min($details['quantity'] ?? 1, $currentStock)
             ]);
         }
         
@@ -328,22 +353,26 @@ class CartController extends Controller
         ]);
     }
 
-    // Sync cart with latest product data - PERBAIKAN
+    // Sync cart with latest product data - IMPROVED
     public function syncCart()
     {
         try {
             $cart = Session::get('cart', []);
             $updated = false;
+            $removedItems = [];
             
             foreach ($cart as $productId => $details) {
                 $product = Product::find($productId);
                 
                 if (!$product || !$product->is_active) {
                     // Remove inactive products
+                    $removedItems[] = $details['name'] ?? 'Unknown Product';
                     unset($cart[$productId]);
                     $updated = true;
                     continue;
                 }
+                
+                $currentStock = $product->stock_quantity ?? 0;
                 
                 // Update price if changed
                 $currentPrice = $product->sale_price ?: $product->price;
@@ -353,15 +382,23 @@ class CartController extends Controller
                     $updated = true;
                 }
                 
-                // Update stock info - PENTING
-                if ($cart[$productId]['stock'] != $product->stock_quantity) {
-                    $cart[$productId]['stock'] = $product->stock_quantity;
+                // Update stock info
+                if ($cart[$productId]['stock'] != $currentStock) {
+                    $cart[$productId]['stock'] = $currentStock;
                     $updated = true;
                 }
                 
+                // Remove items that are out of stock
+                if ($currentStock <= 0) {
+                    $removedItems[] = $details['name'] ?? 'Unknown Product';
+                    unset($cart[$productId]);
+                    $updated = true;
+                    continue;
+                }
+                
                 // Adjust quantity if exceeds current stock
-                if ($cart[$productId]['quantity'] > $product->stock_quantity) {
-                    $cart[$productId]['quantity'] = max(1, $product->stock_quantity);
+                if ($cart[$productId]['quantity'] > $currentStock) {
+                    $cart[$productId]['quantity'] = $currentStock;
                     $updated = true;
                 }
             }
@@ -370,11 +407,20 @@ class CartController extends Controller
                 Session::put('cart', $cart);
             }
             
+            $message = 'Cart is up to date';
+            if ($updated) {
+                $message = 'Cart synced with latest data';
+                if (!empty($removedItems)) {
+                    $message .= '. Removed out of stock items: ' . implode(', ', $removedItems);
+                }
+            }
+            
             return response()->json([
                 'success' => true,
                 'updated' => $updated,
                 'cart_count' => $this->getCartItemCount(),
-                'message' => $updated ? 'Cart synced with latest data' : 'Cart is up to date'
+                'removed_items' => $removedItems,
+                'message' => $message
             ]);
             
         } catch (\Exception $e) {

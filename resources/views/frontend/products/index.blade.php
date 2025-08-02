@@ -636,14 +636,26 @@
                                     </div>
                                     
                                     <div class="flex gap-2">
-                                        <button class="flex-1 bg-gray-900 text-white py-2 px-3 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors {{ $product->stock_quantity <= 0 ? 'opacity-50 cursor-not-allowed' : '' }}" {{ $product->stock_quantity <= 0 ? 'disabled' : '' }}>
-                                            <i class="fas fa-shopping-cart mr-1"></i>
-                                            {{ $product->stock_quantity > 0 ? 'Add to Cart' : 'Out of Stock' }}
-                                        </button>
-                                        <a href="{{ route('products.show', $product->slug) }}" class="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center">
-                                            <i class="fas fa-eye text-gray-600"></i>
-                                        </a>
-                                    </div>
+    @if($product->stock_quantity > 0)
+        <form action="{{ route('cart.add') }}" method="POST" class="add-to-cart-form flex-1">
+            @csrf
+            <input type="hidden" name="product_id" value="{{ $product->id }}">
+            <input type="hidden" name="quantity" value="1">
+            <button type="submit" class="w-full bg-gray-900 text-white py-2 px-3 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors">
+                <i class="fas fa-shopping-cart mr-1"></i>
+                Add to Cart
+            </button>
+        </form>
+    @else
+        <button disabled class="flex-1 bg-gray-300 text-gray-500 py-2 px-3 rounded-lg text-sm font-medium cursor-not-allowed">
+            <i class="fas fa-times mr-1"></i>
+            Out of Stock
+        </button>
+    @endif
+    <a href="{{ route('products.show', $product->slug) }}" class="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center">
+        <i class="fas fa-eye text-gray-600"></i>
+    </a>
+</div>
                                 </div>
                             </div>
                         @endforeach
@@ -686,6 +698,13 @@
             </div>
         </div>
     </div>
+    <!-- Add to Cart Success Toast -->
+<div id="cart-toast" class="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg transform translate-x-full transition-transform duration-300 z-50">
+    <div class="flex items-center gap-2">
+        <i class="fas fa-check-circle"></i>
+        <span>Product added to cart!</span>
+    </div>
+</div>
 @endsection
 
 <!-- CSS -->
@@ -1317,4 +1336,130 @@
         updateSizeFilter();
         updateColorFilter();
     });
+    document.addEventListener('DOMContentLoaded', function() {
+    console.log('🛒 Initializing add to cart functionality');
+    
+    // Find all add to cart forms
+    const cartForms = document.querySelectorAll('.add-to-cart-form');
+    const cartToast = document.getElementById('cart-toast');
+    
+    console.log('📝 Found', cartForms.length, 'add to cart forms');
+    
+    if (cartForms.length === 0) {
+        console.warn('⚠️ No add to cart forms found');
+        return;
+    }
+    
+    // Initialize each form
+    cartForms.forEach((form, index) => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            console.log('🚀 Add to cart form submitted');
+            
+            const formData = new FormData(this);
+            const button = this.querySelector('button[type="submit"]');
+            const originalText = button.innerHTML;
+            
+            // Check for CSRF token
+            const csrfToken = document.querySelector('meta[name="csrf-token"]');
+            if (!csrfToken) {
+                console.error('❌ CSRF token not found');
+                showToast('Security error. Please refresh the page.', 'error');
+                return;
+            }
+            
+            console.log('🔐 CSRF token found');
+            
+            // Show loading state
+            button.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Adding...';
+            button.disabled = true;
+            button.classList.add('opacity-75');
+            
+            // Make AJAX request
+            fetch(this.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken.getAttribute('content'),
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                console.log('📡 Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                return response.json();
+            })
+            .then(data => {
+                console.log('📦 Response data:', data);
+                
+                if (data.success) {
+                    console.log('✅ Product added to cart successfully');
+                    
+                    // Show success state
+                    button.innerHTML = '<i class="fas fa-check mr-1"></i>Added!';
+                    button.classList.remove('bg-gray-900', 'hover:bg-gray-800', 'opacity-75');
+                    button.classList.add('bg-green-500', 'hover:bg-green-600');
+                    
+                    // Show success toast
+                    if (cartToast) {
+                        cartToast.classList.remove('translate-x-full');
+                        setTimeout(() => {
+                            cartToast.classList.add('translate-x-full');
+                        }, 3000);
+                    }
+                    
+                    // Update cart counter
+                    updateCartCounter(data.cart_count);
+                    
+                    // Reset button after 2 seconds
+                    setTimeout(() => {
+                        resetButton(button, originalText);
+                    }, 2000);
+                    
+                } else {
+                    console.error('❌ Add to cart failed:', data.message);
+                    showToast(data.message || 'Failed to add product to cart. Please try again.', 'error');
+                    resetButton(button, originalText);
+                }
+            })
+            .catch(error => {
+                console.error('💥 Add to cart error:', error);
+                showToast('Network error occurred. Please check your connection and try again.', 'error');
+                resetButton(button, originalText);
+            });
+        });
+    });
+    
+    // Helper function to reset button
+    function resetButton(button, originalText) {
+        button.innerHTML = originalText;
+        button.disabled = false;
+        button.classList.remove('bg-green-500', 'hover:bg-green-600', 'opacity-75');
+        button.classList.add('bg-gray-900', 'hover:bg-gray-800');
+    }
+    
+    // Helper function to update cart counter
+    function updateCartCounter(count) {
+        const cartCounters = document.querySelectorAll('.cart-counter, [data-cart-count]');
+        cartCounters.forEach(counter => {
+            counter.textContent = count;
+            console.log('🔢 Cart counter updated to:', count);
+        });
+        
+        // Update cart badge in navigation
+        const cartBadge = document.querySelector('.cart-badge');
+        if (cartBadge) {
+            cartBadge.textContent = count;
+            cartBadge.style.display = count > 0 ? 'block' : 'none';
+        }
+    }
+    
+    console.log('✅ Add to cart functionality initialized successfully');
+});
 </script>
