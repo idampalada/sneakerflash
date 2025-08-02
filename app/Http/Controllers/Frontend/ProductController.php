@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Frontend;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Category;
+use App\Models\Wishlist;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Auth;
 
 class ProductController extends Controller
 {
@@ -74,13 +76,22 @@ class ProductController extends Controller
             $availableColors = $availableColors->unique()->sort()->values();
         }
 
+        // FIXED: Get user wishlist product IDs
+        $userWishlistProductIds = collect();
+        if (Auth::check()) {
+            $userWishlistProductIds = Wishlist::where('user_id', Auth::id())
+                ->pluck('product_id')
+                ->toArray();
+        }
+
         return view('frontend.products.index', compact(
             'products', 
             'categories', 
             'brands', 
             'stockCounts',
             'availableSizes',
-            'availableColors'
+            'availableColors',
+            'userWishlistProductIds'
         ));
     }
 
@@ -115,7 +126,24 @@ class ProductController extends Controller
 
         $relatedProducts = $relatedQuery->take(4)->get();
 
-        return view('frontend.products.show', compact('product', 'relatedProducts'));
+        // FIXED: Get user wishlist status for product and related products
+        $userWishlistProductIds = collect();
+        if (Auth::check()) {
+            $allProductIds = collect([$product->id])
+                ->merge($relatedProducts->pluck('id'))
+                ->unique();
+                
+            $userWishlistProductIds = Wishlist::where('user_id', Auth::id())
+                ->whereIn('product_id', $allProductIds)
+                ->pluck('product_id')
+                ->toArray();
+        }
+
+        return view('frontend.products.show', compact(
+            'product', 
+            'relatedProducts', 
+            'userWishlistProductIds'
+        ));
     }
 
     /**
@@ -140,10 +168,25 @@ class ProductController extends Controller
         
         $products = $query->paginate(12)->withQueryString();
 
+        // FIXED: Get user wishlist product IDs
+        $userWishlistProductIds = collect();
+        if (Auth::check()) {
+            $productIds = $products->pluck('id');
+            $userWishlistProductIds = Wishlist::where('user_id', Auth::id())
+                ->whereIn('product_id', $productIds)
+                ->pluck('product_id')
+                ->toArray();
+        }
+
         $pageTitle = 'Mens Collection';
         $pageDescription = 'Discover our latest mens sneaker collection';
         
-        return view('frontend.products.category', compact('products', 'pageTitle', 'pageDescription'));
+        return view('frontend.products.category', compact(
+            'products', 
+            'pageTitle', 
+            'pageDescription',
+            'userWishlistProductIds'
+        ));
     }
 
     /**
@@ -168,10 +211,25 @@ class ProductController extends Controller
         
         $products = $query->paginate(12)->withQueryString();
 
+        // FIXED: Get user wishlist product IDs
+        $userWishlistProductIds = collect();
+        if (Auth::check()) {
+            $productIds = $products->pluck('id');
+            $userWishlistProductIds = Wishlist::where('user_id', Auth::id())
+                ->whereIn('product_id', $productIds)
+                ->pluck('product_id')
+                ->toArray();
+        }
+
         $pageTitle = 'Womens Collection';
         $pageDescription = 'Discover our latest womens sneaker collection';
         
-        return view('frontend.products.category', compact('products', 'pageTitle', 'pageDescription'));
+        return view('frontend.products.category', compact(
+            'products', 
+            'pageTitle', 
+            'pageDescription',
+            'userWishlistProductIds'
+        ));
     }
 
     /**
@@ -196,10 +254,25 @@ class ProductController extends Controller
         
         $products = $query->paginate(12)->withQueryString();
 
+        // FIXED: Get user wishlist product IDs
+        $userWishlistProductIds = collect();
+        if (Auth::check()) {
+            $productIds = $products->pluck('id');
+            $userWishlistProductIds = Wishlist::where('user_id', Auth::id())
+                ->whereIn('product_id', $productIds)
+                ->pluck('product_id')
+                ->toArray();
+        }
+
         $pageTitle = 'Kids Collection';
         $pageDescription = 'Discover our latest kids sneaker collection';
         
-        return view('frontend.products.category', compact('products', 'pageTitle', 'pageDescription'));
+        return view('frontend.products.category', compact(
+            'products', 
+            'pageTitle', 
+            'pageDescription',
+            'userWishlistProductIds'
+        ));
     }
 
     /**
@@ -242,10 +315,25 @@ class ProductController extends Controller
         
         $products = $query->paginate(12)->withQueryString();
 
+        // FIXED: Get user wishlist product IDs
+        $userWishlistProductIds = collect();
+        if (Auth::check()) {
+            $productIds = $products->pluck('id');
+            $userWishlistProductIds = Wishlist::where('user_id', Auth::id())
+                ->whereIn('product_id', $productIds)
+                ->pluck('product_id')
+                ->toArray();
+        }
+
         $pageTitle = 'Sale Products';
         $pageDescription = 'Get the best deals on premium sneakers and accessories';
         
-        return view('frontend.products.category', compact('products', 'pageTitle', 'pageDescription'));
+        return view('frontend.products.category', compact(
+            'products', 
+            'pageTitle', 
+            'pageDescription',
+            'userWishlistProductIds'
+        ));
     }
 
     /**
@@ -277,10 +365,26 @@ class ProductController extends Controller
             ->sort()
             ->values();
 
+        // FIXED: Get user wishlist product IDs
+        $userWishlistProductIds = collect();
+        if (Auth::check()) {
+            $productIds = $products->pluck('id');
+            $userWishlistProductIds = Wishlist::where('user_id', Auth::id())
+                ->whereIn('product_id', $productIds)
+                ->pluck('product_id')
+                ->toArray();
+        }
+
         $pageTitle = 'Shop by Brand';
         $pageDescription = 'Explore products from your favorite brands';
         
-        return view('frontend.products.brands', compact('products', 'brands', 'pageTitle', 'pageDescription'));
+        return view('frontend.products.brands', compact(
+            'products', 
+            'brands',
+            'pageTitle', 
+            'pageDescription',
+            'userWishlistProductIds'
+        ));
     }
 
     /**
@@ -318,10 +422,25 @@ class ProductController extends Controller
         
         $products = $query->paginate(12)->withQueryString();
 
+        // FIXED: Get user wishlist product IDs
+        $userWishlistProductIds = collect();
+        if (Auth::check()) {
+            $productIds = $products->pluck('id');
+            $userWishlistProductIds = Wishlist::where('user_id', Auth::id())
+                ->whereIn('product_id', $productIds)
+                ->pluck('product_id')
+                ->toArray();
+        }
+
         $pageTitle = 'Accessories';
         $pageDescription = 'Complete your look with our accessories collection';
         
-        return view('frontend.products.category', compact('products', 'pageTitle', 'pageDescription'));
+        return view('frontend.products.category', compact(
+            'products', 
+            'pageTitle', 
+            'pageDescription',
+            'userWishlistProductIds'
+        ));
     }
 
     /**
@@ -378,11 +497,22 @@ class ProductController extends Controller
             ->sort()
             ->values();
 
+        // FIXED: Get user wishlist product IDs
+        $userWishlistProductIds = collect();
+        if (Auth::check()) {
+            $productIds = $products->pluck('id');
+            $userWishlistProductIds = Wishlist::where('user_id', Auth::id())
+                ->whereIn('product_id', $productIds)
+                ->pluck('product_id')
+                ->toArray();
+        }
+
         return view('frontend.products.search', compact(
             'products', 
             'categories', 
             'brands', 
-            'searchQuery'
+            'searchQuery',
+            'userWishlistProductIds'
         ));
     }
 

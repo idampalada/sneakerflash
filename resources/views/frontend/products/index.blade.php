@@ -553,9 +553,11 @@
                                         @endif
                                     </div>
 
-                                    <!-- Wishlist button -->
-                                    <button class="absolute top-3 right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md hover:shadow-lg transition-shadow">
-                                        <i class="far fa-heart text-gray-400 hover:text-red-500 transition-colors"></i>
+                                    <!-- Wishlist button - FIXED -->
+                                    <button class="wishlist-btn absolute top-3 right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md hover:shadow-lg transition-all duration-200" 
+                                            data-product-id="{{ $product->id }}"
+                                            data-product-name="{{ $product->name }}">
+                                        <i class="wishlist-icon far fa-heart text-gray-400 transition-colors"></i>
                                     </button>
                                 </div>
                                 
@@ -638,9 +640,9 @@
                                             <i class="fas fa-shopping-cart mr-1"></i>
                                             {{ $product->stock_quantity > 0 ? 'Add to Cart' : 'Out of Stock' }}
                                         </button>
-                                        <button class="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                                        <a href="{{ route('products.show', $product->slug) }}" class="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center">
                                             <i class="fas fa-eye text-gray-600"></i>
-                                        </button>
+                                        </a>
                                     </div>
                                 </div>
                             </div>
@@ -663,6 +665,25 @@
                     {{ $products->appends(request()->query())->links() }}
                 </div>
             </main>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toastNotification" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-white border border-gray-200 rounded-lg shadow-lg p-4 min-w-80">
+            <div class="flex items-start">
+                <div class="flex-shrink-0">
+                    <i id="toastIcon" class="fas fa-check-circle text-green-500"></i>
+                </div>
+                <div class="ml-3 flex-1">
+                    <p id="toastMessage" class="text-sm font-medium text-gray-900"></p>
+                </div>
+                <div class="ml-4 flex-shrink-0">
+                    <button onclick="hideToast()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                        <i class="fas fa-times text-sm"></i>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 @endsection
@@ -772,6 +793,24 @@
         box-shadow: inset 0 0 0 1px #e5e7eb, 0 0 0 3px #3B82F6;
     }
 
+    /* Wishlist button styles */
+    .wishlist-btn {
+        z-index: 10;
+    }
+
+    .wishlist-btn:hover .wishlist-icon {
+        color: #ef4444;
+        transform: scale(1.1);
+    }
+
+    .wishlist-btn.active .wishlist-icon {
+        color: #ef4444;
+    }
+
+    .wishlist-btn.active .wishlist-icon::before {
+        content: "\f004"; /* solid heart */
+    }
+
     /* List view styles */
     .list-view .product-card {
         display: flex;
@@ -800,10 +839,44 @@
             transform: translateY(0);
         }
     }
+
+    /* Toast notification styles */
+    #toastNotification {
+        animation: slideInRight 0.3s ease-out;
+    }
+
+    #toastNotification.hiding {
+        animation: slideOutRight 0.3s ease-in;
+    }
+
+    @keyframes slideInRight {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    @keyframes slideOutRight {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        to {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+    }
 </style>
 
 <!-- JavaScript -->
 <script>
+    // Wishlist functionality
+    let userWishlist = [];
+
     // Filter Toggle Functionality
     document.addEventListener('DOMContentLoaded', function() {
         const filterToggle = document.getElementById('filterToggle');
@@ -825,6 +898,9 @@
                 filterIcon.classList.add('fa-chevron-down');
             }
         });
+
+        // Initialize wishlist functionality
+        initWishlist();
 
         // Size selection with visual feedback
         document.querySelectorAll('.size-option').forEach(button => {
@@ -901,6 +977,199 @@
             });
         });
     });
+
+    // Initialize wishlist functionality
+    function initWishlist() {
+        // Check if user is authenticated
+        @if(Auth::check())
+            loadUserWishlist();
+        @endif
+
+        // Add event listeners to all wishlist buttons
+        document.querySelectorAll('.wishlist-btn').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                @guest
+                    // Redirect to login if not authenticated
+                    showToast('Please login to add items to wishlist', 'error');
+                    setTimeout(() => {
+                        window.location.href = '{{ route("login") }}';
+                    }, 1500);
+                    return;
+                @endguest
+
+                const productId = this.dataset.productId;
+                const productName = this.dataset.productName;
+                
+                toggleWishlist(productId, productName, this);
+            });
+        });
+    }
+
+    // Load user's wishlist from server
+    function loadUserWishlist() {
+        fetch('{{ route("wishlist.count") }}', {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Update wishlist UI based on server data
+            updateWishlistUI();
+        })
+        .catch(error => {
+            console.error('Error loading wishlist:', error);
+        });
+
+        // Check which products are in wishlist
+        const productIds = Array.from(document.querySelectorAll('.wishlist-btn')).map(btn => btn.dataset.productId);
+        
+        if (productIds.length > 0) {
+            fetch('{{ route("wishlist.check") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                },
+                body: JSON.stringify({ product_ids: productIds })
+            })
+            .then(response => response.json())
+            .then(data => {
+                userWishlist = data.wishlist_products || [];
+                updateWishlistUI();
+            })
+            .catch(error => {
+                console.error('Error checking wishlist:', error);
+            });
+        }
+    }
+
+    // Toggle wishlist item
+    function toggleWishlist(productId, productName, button) {
+        button.style.pointerEvents = 'none'; // Disable button during request
+        
+        fetch(`{{ url('/wishlist/toggle') }}/${productId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (data.is_added) {
+                    userWishlist.push(parseInt(productId));
+                    showToast(`${productName} added to wishlist!`, 'success');
+                } else {
+                    userWishlist = userWishlist.filter(id => id !== parseInt(productId));
+                    showToast(`${productName} removed from wishlist!`, 'info');
+                }
+                
+                updateWishlistUI();
+                updateWishlistCount(data.wishlist_count);
+            } else {
+                showToast(data.message || 'Something went wrong', 'error');
+                if (data.redirect) {
+                    setTimeout(() => {
+                        window.location.href = data.redirect;
+                    }, 1500);
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Wishlist error:', error);
+            showToast('Something went wrong. Please try again.', 'error');
+        })
+        .finally(() => {
+            button.style.pointerEvents = 'auto'; // Re-enable button
+        });
+    }
+
+    // Update wishlist UI
+    function updateWishlistUI() {
+        document.querySelectorAll('.wishlist-btn').forEach(button => {
+            const productId = parseInt(button.dataset.productId);
+            const icon = button.querySelector('.wishlist-icon');
+            
+            if (userWishlist.includes(productId)) {
+                button.classList.add('active');
+                icon.classList.remove('far');
+                icon.classList.add('fas');
+                icon.style.color = '#ef4444';
+            } else {
+                button.classList.remove('active');
+                icon.classList.remove('fas');
+                icon.classList.add('far');
+                icon.style.color = '#9ca3af';
+            }
+        });
+    }
+
+    // Update wishlist count in header
+    function updateWishlistCount(count) {
+        const wishlistCountElement = document.querySelector('.wishlist-count');
+        if (wishlistCountElement) {
+            wishlistCountElement.textContent = count;
+            if (count > 0) {
+                wishlistCountElement.style.display = 'inline';
+            } else {
+                wishlistCountElement.style.display = 'none';
+            }
+        }
+    }
+
+    // Show toast notification
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toastNotification');
+        const icon = document.getElementById('toastIcon');
+        const messageEl = document.getElementById('toastMessage');
+        
+        // Set message
+        messageEl.textContent = message;
+        
+        // Set icon based on type
+        icon.className = 'fas ';
+        switch(type) {
+            case 'success':
+                icon.className += 'fa-check-circle text-green-500';
+                break;
+            case 'error':
+                icon.className += 'fa-exclamation-circle text-red-500';
+                break;
+            case 'info':
+                icon.className += 'fa-info-circle text-blue-500';
+                break;
+            default:
+                icon.className += 'fa-check-circle text-green-500';
+        }
+        
+        // Show toast
+        toast.classList.remove('hidden');
+        
+        // Auto hide after 3 seconds
+        setTimeout(() => {
+            hideToast();
+        }, 3000);
+    }
+
+    // Hide toast notification
+    function hideToast() {
+        const toast = document.getElementById('toastNotification');
+        toast.classList.add('hiding');
+        
+        setTimeout(() => {
+            toast.classList.add('hidden');
+            toast.classList.remove('hiding');
+        }, 300);
+    }
 
     // Individual filter removal functions
     function removeFilter(filterName) {

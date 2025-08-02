@@ -21,6 +21,11 @@
     
     <!-- Custom Styles -->
     <style>
+        /* Reset and Base Styles */
+        * {
+            box-sizing: border-box;
+        }
+
         /* Exact Kick Avenue Colors - Background PUTIH */
         .ka-header {
             background: #ffffff;
@@ -121,6 +126,7 @@
             font-weight: 500;
             text-decoration: none;
             transition: all 0.3s ease;
+            display: inline-block;
         }
         
         .ka-login-btn {
@@ -144,7 +150,92 @@
             background: #555;
         }
 
-        /* Dropdown Styles - Updated for click-based dropdowns */
+        /* Cart & Wishlist Icon Styles */
+        .icon-btn {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #f8f9fa;
+            border: 1px solid #e5e5e5;
+            color: #666;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-size: 16px;
+        }
+
+        .icon-btn:hover {
+            background: #e9ecef;
+            color: #333;
+            transform: translateY(-1px);
+        }
+
+        .icon-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #ff4757;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            line-height: 1;
+        }
+
+        /* User Menu Button */
+        .user-menu-btn {
+            display: flex;
+            align-items: center;
+            color: #666;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            background: #f8f9fa;
+            border: 1px solid #e5e5e5;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .user-menu-btn:hover {
+            background: #e9ecef;
+            color: #333;
+        }
+
+        /* User dropdown positioning */
+        .user-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            min-width: 180px;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease;
+            margin-top: 10px;
+            pointer-events: none;
+        }
+
+        .user-dropdown.show {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
+
+        /* Navigation dropdown styles */
         .nav-dropdown {
             position: absolute;
             top: 100%;
@@ -163,7 +254,6 @@
             pointer-events: none;
         }
 
-        /* Show dropdown when active */
         .nav-dropdown.show {
             opacity: 1;
             visibility: visible;
@@ -176,7 +266,7 @@
             display: inline-block;
         }
 
-        /* Main navigation button styling - changed from links to buttons */
+        /* Main navigation button styling */
         .nav-main-btn {
             color: #666666;
             padding: 8px 20px;
@@ -260,6 +350,12 @@
             font-weight: 500;
             border-bottom: 1px solid #f0f0f0;
             transition: all 0.3s ease;
+            width: 100%;
+            text-align: left;
+            background: none;
+            border-left: none;
+            border-right: none;
+            border-top: none;
         }
 
         .dropdown-item:last-child {
@@ -303,7 +399,7 @@
             color: #000;
         }
 
-        /* Image Carousel Styles - Like Kick Avenue */
+        /* Image Carousel Styles */
         .carousel-container {
             position: relative;
             width: 100%;
@@ -474,16 +570,22 @@
                 right: 10px;
             }
 
-            .footer-column-divider {
-                display: none;
-            }
-
-            .nav-dropdown {
-                display: none;
-            }
-
             .ka-logo-img {
                 height: 40px;
+            }
+
+            .icon-btn {
+                width: 35px;
+                height: 35px;
+                font-size: 14px;
+            }
+
+            .icon-badge {
+                width: 18px;
+                height: 18px;
+                font-size: 10px;
+                top: -3px;
+                right: -3px;
             }
         }
     </style>
@@ -535,16 +637,31 @@
             }
         }
 
-        // Close dropdown when clicking outside
-        document.addEventListener('click', function(event) {
-            const navContainer = document.querySelector('.nav-container');
-            if (navContainer && !navContainer.contains(event.target)) {
-                // Trigger Alpine.js to close dropdown
-                const alpineComponent = document.querySelector('[x-data*="navigationDropdown"]');
-                if (alpineComponent && alpineComponent._x_dataStack) {
-                    alpineComponent._x_dataStack[0].closeDropdown();
+        // User dropdown functionality
+        function userDropdown() {
+            return {
+                open: false,
+                toggle() {
+                    this.open = !this.open;
+                },
+                close() {
+                    this.open = false;
                 }
             }
+        }
+
+        // Close dropdowns when clicking outside
+        document.addEventListener('DOMContentLoaded', function() {
+            document.addEventListener('click', function(event) {
+                // Close navigation dropdowns
+                const navContainer = document.querySelector('.nav-container');
+                if (navContainer && !navContainer.contains(event.target)) {
+                    const alpineComponent = document.querySelector('[x-data*="navigationDropdown"]');
+                    if (alpineComponent && alpineComponent._x_dataStack) {
+                        alpineComponent._x_dataStack[0].closeDropdown();
+                    }
+                }
+            });
         });
     </script>
 </head>
@@ -577,9 +694,6 @@
                 @auth
                     <a href="/orders" class="mobile-menu-item">
                         <i class="fas fa-shopping-bag mr-2"></i>My Orders
-                    </a>
-                    <a href="{{ route('cart.index') }}" class="mobile-menu-item">
-                        <i class="fas fa-shopping-cart mr-2"></i>Cart
                     </a>
                     <form action="{{ route('logout') }}" method="POST">
                         @csrf
@@ -623,48 +737,79 @@
                     </form>
                 </div>
 
-                <!-- User Menu / Auth -->
-                <div class="flex items-center space-x-4">
-                    @auth
-                        <!-- User Dropdown -->
-                        <div class="relative" x-data="{ open: false }">
-                            <button @click="open = !open" class="flex items-center space-x-2 text-gray-700 hover:text-gray-900">
-                                <i class="fas fa-user-circle text-xl"></i>
-                                <span class="hidden md:inline text-sm text-gray-600">{{ auth()->user()->name }}</span>
-                                <i class="fas fa-chevron-down text-sm text-gray-600"></i>
-                            </button>
+                <!-- User Menu / Auth - UPDATED with Cart & Wishlist -->
+                <!-- User Menu / Auth - UPDATED with Cart & Wishlist -->
+<div class="flex items-center space-x-3">
+    @auth
+        <!-- Wishlist Icon -->
+        <a href="{{ route('wishlist.index') }}" class="icon-btn" title="Wishlist">
+            <i class="fas fa-heart"></i>
+            @php
+                $wishlistCount = auth()->user()->getWishlistCount();
+            @endphp
+            @if($wishlistCount > 0)
+                <span class="icon-badge" id="wishlistCount">{{ $wishlistCount }}</span>
+            @else
+                <span class="icon-badge" id="wishlistCount" style="display: none;">0</span>
+            @endif
+        </a>
 
-                            <!-- Dropdown Menu -->
-                            <div x-show="open" @click.away="open = false" 
-                                 class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
-                                <a href="/orders" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                    <i class="fas fa-shopping-bag mr-2"></i>My Orders
-                                </a>
-                                <a href="{{ route('cart.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                    <i class="fas fa-shopping-cart mr-2"></i>Cart
-                                </a>
-                                <hr class="my-1">
-                                <form action="{{ route('logout') }}" method="POST" class="block">
-                                    @csrf
-                                    <button type="submit" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                    @else
-                        <!-- Login/Register untuk guest -->
-                        <a href="/login" class="ka-auth-btn ka-login-btn">
-                            Login
-                        </a>
-                        <a href="/register" class="ka-auth-btn ka-register-btn">
-                            Register
-                        </a>
-                    @endauth
-                </div>
+        <!-- Cart Icon -->
+        <a href="{{ route('cart.index') }}" class="icon-btn" title="Shopping Cart">
+            <i class="fas fa-shopping-cart"></i>
+            @php
+                $cartCount = count(session('cart', []));
+            @endphp
+            @if($cartCount > 0)
+                <span class="icon-badge" id="cartCount">{{ $cartCount }}</span>
+            @else
+                <span class="icon-badge" id="cartCount" style="display: none;">0</span>
+            @endif
+        </a>
 
+        <!-- User Dropdown -->
+        <div class="relative" x-data="userDropdown()" @click.away="close()">
+            <button @click="toggle()" class="user-menu-btn">
+                <i class="fas fa-user-circle text-xl"></i>
+                <span class="hidden md:inline text-sm ml-2">{{ auth()->user()->name }}</span>
+                <i class="fas fa-chevron-down text-sm ml-1"></i>
+            </button>
+
+            <!-- Dropdown Menu -->
+            <div class="user-dropdown" :class="{ 'show': open }">
+                <a href="{{ route('wishlist.index') }}" class="dropdown-item">
+                    <i class="fas fa-heart mr-2"></i>My Wishlist
+                    @if($wishlistCount > 0)
+                        <span class="ml-auto text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full">{{ $wishlistCount }}</span>
+                    @endif
+                </a>
+                <a href="{{ route('orders.index') }}" class="dropdown-item">
+                    <i class="fas fa-shopping-bag mr-2"></i>My Orders
+                </a>
+                <a href="{{ route('profile.index') }}" class="dropdown-item">
+                    <i class="fas fa-user mr-2"></i>Profile
+                </a>
+                <div style="border-top: 1px solid #f0f0f0; margin: 5px 0;"></div>
+                <form action="{{ route('logout') }}" method="POST" class="block">
+                    @csrf
+                    <button type="submit" class="dropdown-item">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    </button>
+                </form>
+            </div>
+        </div>
+    @else
+        <!-- Login/Register untuk guest -->
+        <a href="{{ route('login') }}" class="ka-auth-btn ka-login-btn">
+            Login
+        </a>
+        <a href="{{ route('register') }}" class="ka-auth-btn ka-register-btn">
+            Register
+        </a>
+    @endauth
+</div>
                 <!-- Mobile Menu Button -->
-                <button @click="mobileMenuOpen = !mobileMenuOpen" class="md:hidden text-gray-600 hover:text-gray-800">
+                <button @click="mobileMenuOpen = !mobileMenuOpen" class="md:hidden text-gray-600 hover:text-gray-800 ml-3">
                     <i class="fas fa-bars text-xl"></i>
                 </button>
             </div>
@@ -675,7 +820,7 @@
             <!-- Desktop Navigation -->
             <div class="hidden md:flex items-center justify-center py-0 nav-container" x-data="navigationDropdown()" @click.away="closeDropdown()">
                 
-                <!-- MENS Dropdown - Click to toggle -->
+                <!-- MENS Dropdown -->
                 <div class="nav-item-container">
                     <button @click="toggleDropdown('mens')" 
                             class="nav-main-btn" 
@@ -692,7 +837,7 @@
                     </div>
                 </div>
 
-                <!-- WOMENS Dropdown - Click to toggle -->
+                <!-- WOMENS Dropdown -->
                 <div class="nav-item-container">
                     <button @click="toggleDropdown('womens')" 
                             class="nav-main-btn" 
@@ -708,14 +853,14 @@
                     </div>
                 </div>
 
-                <!-- KIDS - Simple link, no dropdown -->
+                <!-- KIDS -->
                 <div class="nav-item-container">
                     <a href="/products?category=kids" class="nav-simple-link">
                         KIDS
                     </a>
                 </div>
 
-                <!-- BRAND Dropdown - FIXED VERSION -->
+                <!-- BRAND Dropdown -->
                 <div class="nav-item-container">
                     <button @click="toggleDropdown('brand')" 
                             class="nav-main-btn" 
@@ -769,7 +914,7 @@
                     </div>
                 </div>
 
-                <!-- ACCESSORIES Dropdown - Click to toggle -->
+                <!-- ACCESSORIES Dropdown -->
                 <div class="nav-item-container">
                     <button @click="toggleDropdown('accessories')" 
                             class="nav-main-btn" 
@@ -797,7 +942,7 @@
                     </div>
                 </div>
 
-                <!-- SALE - Simple link, no dropdown -->
+                <!-- SALE -->
                 <div class="nav-item-container">
                     <a href="/products?sale=true" class="nav-simple-link special">
                         SALE
@@ -826,7 +971,40 @@
         </form>
     </div>
 
-    <!-- Image Carousel Slider (Replacing Hero Section) -->
+    <!-- Mobile Cart & Wishlist (tampil di mobile) -->
+    <div class="md:hidden bg-white border-b px-4 py-3">
+    @auth
+        <div class="flex justify-center space-x-6">
+            <!-- Mobile Wishlist -->
+            <a href="{{ route('wishlist.index') }}" class="flex items-center space-x-2 text-gray-600 hover:text-gray-800">
+                <div class="relative">
+                    <i class="fas fa-heart text-lg"></i>
+                    @if($wishlistCount > 0)
+                        <span class="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                            {{ $wishlistCount }}
+                        </span>
+                    @endif
+                </div>
+                <span class="text-sm font-medium">Wishlist</span>
+            </a>
+
+            <!-- Mobile Cart -->
+            <a href="{{ route('cart.index') }}" class="flex items-center space-x-2 text-gray-600 hover:text-gray-800">
+                <div class="relative">
+                    <i class="fas fa-shopping-cart text-lg"></i>
+                    @if($cartCount > 0)
+                        <span class="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                            {{ $cartCount }}
+                        </span>
+                    @endif
+                </div>
+                <span class="text-sm font-medium">Cart</span>
+            </a>
+        </div>
+    @endauth
+</div>
+
+    <!-- Image Carousel Slider -->
     <div class="carousel-container" x-data="carousel()">
         <!-- Carousel Slides -->
         <template x-for="(slide, index) in slides" :key="index">

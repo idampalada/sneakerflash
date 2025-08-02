@@ -4,6 +4,7 @@ use App\Http\Controllers\Frontend\HomeController;
 use App\Http\Controllers\Frontend\ProductController;
 use App\Http\Controllers\Frontend\CategoryController;
 use App\Http\Controllers\Frontend\CartController;
+use App\Http\Controllers\Frontend\WishlistController;
 use App\Http\Controllers\Frontend\CheckoutController;
 use App\Http\Controllers\Frontend\OrderController;
 use App\Http\Controllers\Auth\GoogleController;
@@ -34,15 +35,17 @@ Route::get('/sale', [ProductController::class, 'sale'])->name('products.sale');
 // Categories
 Route::get('/categories/{slug}', [CategoryController::class, 'show'])->name('categories.show');
 
-// Shopping Cart (accessible for all users)
+// Shopping Cart (accessible for all users) - UPDATED VERSION
 Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
 Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
 Route::patch('/cart/{id}', [CartController::class, 'update'])->name('cart.update');
 Route::delete('/cart/{id}', [CartController::class, 'remove'])->name('cart.remove');
 Route::delete('/cart', [CartController::class, 'clear'])->name('cart.clear');
 
-// AJAX Cart Counter
+// AJAX Cart routes - ADDED
 Route::get('/api/cart/count', [CartController::class, 'getCartCount'])->name('cart.count');
+Route::get('/api/cart/data', [CartController::class, 'getCartData'])->name('cart.data');
+Route::post('/cart/sync', [CartController::class, 'syncCart'])->name('cart.sync');
 
 // =====================================
 // AUTHENTICATION ROUTES
@@ -101,6 +104,25 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/orders/{orderNumber}', [OrderController::class, 'show'])->name('orders.show');
     
+    // =====================================
+    // WISHLIST ROUTES - ADDED
+    // =====================================
+    
+    // Wishlist main page
+    Route::get('/wishlist', [WishlistController::class, 'index'])->name('wishlist.index');
+    
+    // Wishlist management routes - AJAX
+    Route::post('/wishlist/toggle/{productId}', [WishlistController::class, 'toggle'])->name('wishlist.toggle');
+    Route::delete('/wishlist/remove/{productId}', [WishlistController::class, 'remove'])->name('wishlist.remove');
+    Route::delete('/wishlist/clear', [WishlistController::class, 'clear'])->name('wishlist.clear');
+    
+    // Move wishlist item to cart
+    Route::post('/wishlist/move-to-cart/{productId}', [WishlistController::class, 'moveToCart'])->name('wishlist.moveToCart');
+    
+    // AJAX Wishlist API routes
+    Route::get('/wishlist/count', [WishlistController::class, 'getCount'])->name('wishlist.count');
+    Route::post('/wishlist/check', [WishlistController::class, 'checkProducts'])->name('wishlist.check');
+    
     // User Profile
     Route::get('/profile', function() {
         return view('frontend.profile.index');
@@ -115,11 +137,6 @@ Route::middleware(['auth'])->group(function () {
         // Profile update logic here
         return redirect()->route('profile.index')->with('success', 'Profile updated successfully');
     })->name('profile.update');
-    
-    // User Wishlist (if implemented)
-    Route::get('/wishlist', function() {
-        return view('frontend.wishlist.index');
-    })->name('wishlist.index');
 });
 
 // =====================================
@@ -185,6 +202,13 @@ Route::prefix('api')->group(function() {
     
     // Check product stock
     Route::get('/products/{id}/stock', [ProductController::class, 'checkStock'])->name('api.products.stock');
+    
+    // AJAX Wishlist routes (requires authentication) - ADDED
+    Route::middleware('auth')->group(function() {
+        Route::get('/wishlist/count', [WishlistController::class, 'getCount'])->name('api.wishlist.count');
+        Route::post('/wishlist/toggle/{productId}', [WishlistController::class, 'toggle'])->name('api.wishlist.toggle');
+        Route::post('/wishlist/check', [WishlistController::class, 'checkProducts'])->name('api.wishlist.check');
+    });
     
     // Newsletter subscription
     Route::post('/newsletter', function() {
@@ -278,6 +302,28 @@ Route::prefix('debug')->group(function() {
     Route::get('/clear-cart', function() {
         session()->forget('cart');
         return response()->json(['message' => 'Cart cleared', 'cart' => session('cart', [])]);
+    });
+
+    // WISHLIST DEBUG ROUTES - ADDED
+    Route::get('/wishlist', function() {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'User not authenticated'], 401);
+        }
+        
+        $wishlists = \App\Models\Wishlist::where('user_id', Auth::id())->with('product')->get();
+        
+        return response()->json([
+            'user' => Auth::user(),
+            'wishlist_count' => $wishlists->count(),
+            'wishlist_items' => $wishlists->map(function($wishlist) {
+                return [
+                    'id' => $wishlist->id,
+                    'product_id' => $wishlist->product_id,
+                    'product_name' => $wishlist->product->name ?? 'Product not found',
+                    'created_at' => $wishlist->created_at
+                ];
+            })
+        ]);
     });
 });
 
