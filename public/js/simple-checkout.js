@@ -1,4 +1,4 @@
-// Simple Checkout JavaScript for Search-Based RajaOngkir V2
+// Enhanced Simple Checkout JavaScript for Search-Based RajaOngkir V2 + Midtrans Integration
 // File: public/js/simple-checkout.js
 
 // Global variables - will be initialized from HTML data attributes
@@ -10,10 +10,13 @@ let availableShippingOptions = [];
 let isCalculatingShipping = false;
 let searchTimeout;
 let selectedDestination = null;
+let isSubmittingOrder = false; // Prevent double submission
 
 // Initialize checkout when page loads
 document.addEventListener("DOMContentLoaded", function () {
-    console.log("🚀 Checkout initialized (Search-Based RajaOngkir V2)");
+    console.log(
+        "🚀 Checkout initialized (Search-Based RajaOngkir V2 + Midtrans)"
+    );
 
     // Initialize variables from data attributes
     initializeVariables();
@@ -30,6 +33,21 @@ document.addEventListener("DOMContentLoaded", function () {
     // Initialize password fields if create account was checked
     if (document.getElementById("create_account")?.checked) {
         togglePassword();
+    }
+
+    // Initialize payment method handlers
+    initializePaymentMethods();
+
+    // Load Midtrans Snap script
+    loadMidtransScript();
+
+    // Debug information
+    const checkoutForm = document.getElementById("checkout-form");
+    console.log("📋 Checkout form found:", !!checkoutForm);
+
+    if (checkoutForm) {
+        console.log("📋 Form action:", checkoutForm.action);
+        console.log("📋 Form method:", checkoutForm.method);
     }
 });
 
@@ -53,9 +71,12 @@ function initializeVariables() {
 }
 
 function setupEventListeners() {
+    console.log("🔧 Setting up event listeners...");
+
     // Destination search listener
     const destinationSearch = document.getElementById("destination_search");
     if (destinationSearch) {
+        console.log("✅ Destination search input found");
         destinationSearch.addEventListener("input", function () {
             const query = this.value.trim();
 
@@ -92,27 +113,452 @@ function setupEventListeners() {
                 hideSearchResults();
             }
         });
+    } else {
+        console.warn("⚠️ Destination search input not found");
     }
 
-    // Form submission handling
+    // Enhanced form submission handling with Midtrans integration
     const checkoutForm = document.getElementById("checkout-form");
     if (checkoutForm) {
-        checkoutForm.addEventListener("submit", function (e) {
-            const submitBtn = document.getElementById("place-order-btn");
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.textContent = "Processing...";
+        console.log("✅ Checkout form found, attaching submit listener");
 
-                // Re-enable button after 10 seconds to prevent permanent lockout
-                setTimeout(() => {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = "Place Order";
-                }, 10000);
+        checkoutForm.addEventListener("submit", function (e) {
+            console.log("📤 FORM SUBMIT EVENT TRIGGERED!");
+            console.log("📤 Event target:", e.target);
+            console.log("📤 Current step:", currentStep);
+            console.log("📤 Is submitting:", isSubmittingOrder);
+
+            e.preventDefault(); // Prevent default form submission
+
+            if (isSubmittingOrder) {
+                console.log(
+                    "⏳ Order submission already in progress, ignoring"
+                );
+                return false;
             }
+
+            // Debug: Check all form inputs
+            const formData = new FormData(checkoutForm);
+            console.log("📋 Form data:");
+            for (let [key, value] of formData.entries()) {
+                console.log(`  ${key}: ${value}`);
+            }
+
+            // Validate final step
+            console.log("🔍 Validating current step...");
+            if (!validateCurrentStep()) {
+                console.log("❌ Validation failed");
+                return false;
+            }
+            console.log("✅ Validation passed");
+
+            // Check payment method
+            const paymentMethod = document.querySelector(
+                'input[name="payment_method"]:checked'
+            )?.value;
+            console.log("💳 Selected payment method:", paymentMethod);
+
+            if (!paymentMethod) {
+                alert("Please select a payment method.");
+                return false;
+            }
+
+            // Handle different payment methods
+            console.log("🚀 Calling handleOrderSubmission...");
+            handleOrderSubmission(paymentMethod);
         });
+
+        // Debug: Add listener to submit button
+        const submitBtn = document.getElementById("place-order-btn");
+        if (submitBtn) {
+            console.log("✅ Submit button found");
+            submitBtn.addEventListener("click", function (e) {
+                console.log("🖱️ Submit button clicked!");
+                console.log("🖱️ Button type:", this.type);
+                console.log("🖱️ Form element:", this.form);
+            });
+        } else {
+            console.warn("⚠️ Submit button not found");
+        }
+    } else {
+        console.error("❌ Checkout form not found!");
     }
 }
 
+// Initialize payment method handlers
+function initializePaymentMethods() {
+    const paymentMethods = document.querySelectorAll(
+        'input[name="payment_method"]'
+    );
+    paymentMethods.forEach((method) => {
+        method.addEventListener("change", function () {
+            const selectedMethod = this.value;
+            console.log("💳 Payment method selected:", selectedMethod);
+
+            // Update submit button text based on payment method
+            updateSubmitButtonText(selectedMethod);
+        });
+    });
+}
+
+// Update submit button text based on payment method
+function updateSubmitButtonText(paymentMethod) {
+    const submitBtn = document.getElementById("place-order-btn");
+    if (!submitBtn) return;
+
+    switch (paymentMethod) {
+        case "cod":
+            submitBtn.textContent = "Place Order (COD)";
+            submitBtn.className =
+                "flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium";
+            break;
+        case "bank_transfer":
+        case "credit_card":
+        case "ewallet":
+            submitBtn.textContent = "Continue to Payment";
+            submitBtn.className =
+                "flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium";
+            break;
+        default:
+            submitBtn.textContent = "Place Order";
+            submitBtn.className =
+                "flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium";
+    }
+}
+
+// Enhanced handleOrderSubmission with detailed debug logging
+function handleOrderSubmission(paymentMethod) {
+    console.log("🎯 === HANDLE ORDER SUBMISSION START ===");
+    console.log("🛒 Payment method:", paymentMethod);
+    console.log("🛒 Is submitting order:", isSubmittingOrder);
+
+    if (isSubmittingOrder) {
+        console.log("⏳ Order submission already in progress");
+        return false;
+    }
+
+    isSubmittingOrder = true;
+    const submitBtn = document.getElementById("place-order-btn");
+
+    // Update button state
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `
+            <div class="flex items-center justify-center">
+                <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                Processing Order...
+            </div>
+        `;
+        console.log("🔄 Submit button updated");
+    }
+
+    showProcessingMessage(paymentMethod);
+
+    // Get form data
+    const form = document.getElementById("checkout-form");
+    const formData = new FormData(form);
+
+    // Debug form data
+    console.log("📋 Final form data being submitted:");
+    for (let [key, value] of formData.entries()) {
+        console.log(`  ${key}: ${value}`);
+    }
+
+    // Ensure privacy_accepted is properly set
+    const privacyCheckbox = document.getElementById("privacy_accepted");
+    if (privacyCheckbox && privacyCheckbox.checked) {
+        formData.set("privacy_accepted", "1");
+        console.log("✅ Privacy accepted: true");
+    } else {
+        console.log("❌ Privacy not accepted");
+        resetSubmitButton();
+        alert("Please accept the privacy policy to continue.");
+        isSubmittingOrder = false;
+        return;
+    }
+
+    // Get CSRF token
+    const csrfToken =
+        document
+            .querySelector('meta[name="csrf-token"]')
+            ?.getAttribute("content") ||
+        document.querySelector('input[name="_token"]')?.value;
+
+    console.log("🔑 CSRF Token:", csrfToken ? "Found" : "Missing");
+    console.log("🔑 Token value:", csrfToken);
+
+    // Prepare fetch options
+    const fetchOptions = {
+        method: "POST",
+        headers: {
+            "X-CSRF-TOKEN": csrfToken,
+            Accept: "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+        },
+        body: formData,
+    };
+
+    console.log("📤 Fetch options:", fetchOptions);
+    console.log("📤 Submitting to URL: /checkout");
+
+    // Submit with enhanced error handling
+    fetch("/checkout", fetchOptions)
+        .then(async (response) => {
+            console.log("📥 === RESPONSE RECEIVED ===");
+            console.log("📥 Response status:", response.status);
+            console.log(
+                "📥 Response headers:",
+                Object.fromEntries(response.headers.entries())
+            );
+            console.log("📥 Response redirected:", response.redirected);
+            console.log("📥 Response url:", response.url);
+
+            const contentType = response.headers.get("content-type");
+            console.log("📥 Content type:", contentType);
+
+            if (!response.ok) {
+                console.error(
+                    "❌ Response not OK:",
+                    response.status,
+                    response.statusText
+                );
+                throw new Error(
+                    `HTTP ${response.status}: ${response.statusText}`
+                );
+            }
+
+            if (contentType && contentType.includes("application/json")) {
+                const data = await response.json();
+                console.log("📥 JSON Response:", data);
+                return { type: "json", data: data };
+            } else {
+                const text = await response.text();
+                console.log(
+                    "📥 Non-JSON Response (first 500 chars):",
+                    text.substring(0, 500)
+                );
+                return { type: "text", data: text };
+            }
+        })
+        .then((result) => {
+            console.log("🎯 === PROCESSING RESPONSE ===");
+            console.log("🎯 Result type:", result.type);
+
+            if (result.type === "json") {
+                const data = result.data;
+                console.log("🎯 JSON data:", data);
+
+                if (data.success) {
+                    console.log("✅ Success response received");
+                    handleSuccessfulOrder(data, paymentMethod);
+                } else {
+                    console.log("❌ Error in response");
+                    if (data.errors) {
+                        handleOrderErrors(data.errors);
+                    } else {
+                        handleOrderError(
+                            data.error || "Unknown error occurred"
+                        );
+                    }
+                }
+            } else {
+                console.log("📄 Non-JSON response received");
+                // Possibly redirect or HTML error
+                handleOrderError("Unexpected response format from server");
+            }
+        })
+        .catch((error) => {
+            console.error("❌ === FETCH ERROR ===");
+            console.error("❌ Error details:", error);
+            console.error("❌ Error message:", error.message);
+            console.error("❌ Error stack:", error.stack);
+
+            handleOrderError(
+                error.message || "Failed to process order. Please try again."
+            );
+        })
+        .finally(() => {
+            console.log("🏁 === REQUEST COMPLETED ===");
+            isSubmittingOrder = false;
+            resetSubmitButton();
+        });
+}
+
+// Enhanced handleSuccessfulOrder
+function handleSuccessfulOrder(data, paymentMethod) {
+    console.log("🎉 === HANDLING SUCCESSFUL ORDER ===");
+    console.log("🎉 Data:", data);
+    console.log("🎉 Payment method:", paymentMethod);
+
+    if (paymentMethod === "cod") {
+        console.log("🚚 COD order, redirecting to success");
+        if (data.redirect_url) {
+            console.log("🔄 Redirecting to:", data.redirect_url);
+            window.location.href = data.redirect_url;
+        } else if (data.order_number) {
+            const successUrl = `/checkout/success/${data.order_number}`;
+            console.log("🔄 Redirecting to:", successUrl);
+            window.location.href = successUrl;
+        } else {
+            showSuccess("✅ COD order placed successfully!");
+            setTimeout(() => (window.location.href = "/"), 2000);
+        }
+    } else {
+        console.log("💳 Online payment processing");
+
+        if (data.snap_token) {
+            console.log("💳 Snap token received:", data.snap_token);
+            console.log("💳 Opening Midtrans payment...");
+            openMidtransPayment(data.snap_token, data.order_number);
+        } else if (data.redirect_url) {
+            console.log("🔄 Redirecting to payment page:", data.redirect_url);
+            window.location.href = data.redirect_url;
+        } else {
+            console.error("❌ No snap token or redirect URL provided");
+            handleOrderError(
+                "Payment session creation failed. Please contact support."
+            );
+        }
+    }
+}
+
+// Show processing message based on payment method
+function showProcessingMessage(paymentMethod) {
+    const statusEl = document.getElementById("connection-status");
+    const statusText = document.getElementById("status-text");
+
+    if (!statusEl || !statusText) return;
+
+    let message = "";
+    switch (paymentMethod) {
+        case "cod":
+            message = "🚚 Processing COD order...";
+            break;
+        case "bank_transfer":
+        case "credit_card":
+        case "ewallet":
+            message = "💳 Creating payment session...";
+            break;
+        default:
+            message = "🛒 Processing your order...";
+    }
+
+    statusEl.className =
+        "mb-4 p-3 rounded-lg border bg-blue-50 border-blue-200";
+    statusText.textContent = message;
+    statusEl.classList.remove("hidden");
+}
+
+// Open Midtrans payment with enhanced error handling
+function openMidtransPayment(snapToken, orderNumber) {
+    console.log("💳 Opening Midtrans payment with token:", snapToken);
+
+    // Check if Snap is loaded
+    if (typeof window.snap === "undefined") {
+        console.error("❌ Midtrans Snap not loaded");
+        handleOrderError(
+            "Payment system not available. Please refresh the page."
+        );
+        return;
+    }
+
+    showSuccess("💳 Opening payment gateway...");
+
+    // Open Midtrans Snap
+    window.snap.pay(snapToken, {
+        onSuccess: function (result) {
+            console.log("✅ Payment successful:", result);
+            showSuccess("✅ Payment successful! Redirecting...");
+
+            // Redirect to success page
+            setTimeout(() => {
+                window.location.href = `/checkout/success/${orderNumber}?payment=success`;
+            }, 1500);
+        },
+
+        onPending: function (result) {
+            console.log("⏳ Payment pending:", result);
+            showWarning(
+                "⏳ Payment is being processed. You will receive confirmation shortly."
+            );
+
+            // Redirect to success page with pending status
+            setTimeout(() => {
+                window.location.href = `/checkout/success/${orderNumber}?payment=pending`;
+            }, 2000);
+        },
+
+        onError: function (result) {
+            console.error("❌ Payment error:", result);
+            handleOrderError(
+                "Payment failed. Please try again or use a different payment method."
+            );
+        },
+
+        onClose: function () {
+            console.log("🔒 Payment popup closed by user");
+            showWarning(
+                "Payment was cancelled. You can complete payment later from your order history."
+            );
+
+            // Ask user if they want to view order or retry
+            setTimeout(() => {
+                if (
+                    confirm(
+                        "Would you like to view your order details and try payment again?"
+                    )
+                ) {
+                    window.location.href = `/checkout/success/${orderNumber}`;
+                } else {
+                    // Reset form or go back to main page
+                    resetSubmitButton();
+                }
+            }, 1000);
+        },
+    });
+}
+
+// Handle order submission errors
+function handleOrderErrors(errors) {
+    let errorMessage = "Please fix the following errors:\n";
+
+    if (typeof errors === "object") {
+        Object.keys(errors).forEach((field) => {
+            if (Array.isArray(errors[field])) {
+                errorMessage += `\n• ${errors[field].join(", ")}`;
+            } else {
+                errorMessage += `\n• ${errors[field]}`;
+            }
+        });
+    } else {
+        errorMessage = errors;
+    }
+
+    alert(errorMessage);
+    showError("❌ Please fix the errors and try again.");
+}
+
+// Handle general order errors
+function handleOrderError(message) {
+    console.error("❌ Order error:", message);
+    alert(message);
+    showError("❌ " + message);
+}
+
+// Reset submit button to original state
+function resetSubmitButton() {
+    const submitBtn = document.getElementById("place-order-btn");
+    if (!submitBtn) return;
+
+    const paymentMethod = document.querySelector(
+        'input[name="payment_method"]:checked'
+    )?.value;
+
+    submitBtn.disabled = false;
+    updateSubmitButtonText(paymentMethod || "default");
+}
+
+// Test RajaOngkir connection
 function testRajaOngkirConnection() {
     console.log("🔍 Testing RajaOngkir V2 connection...");
 
@@ -150,6 +596,7 @@ function testRajaOngkirConnection() {
         });
 }
 
+// Status message functions
 function showSuccess(message) {
     const statusEl = document.getElementById("connection-status");
     const statusText = document.getElementById("status-text");
@@ -185,6 +632,7 @@ function showError(message) {
     }
 }
 
+// Search destinations
 function searchDestinations(query) {
     console.log("🔍 Searching destinations for:", query);
 
@@ -735,7 +1183,245 @@ function togglePassword() {
     }
 }
 
-// Make functions available globally for onclick handlers
+// Load Midtrans Snap script
+function loadMidtransScript() {
+    const clientKey = document
+        .querySelector('meta[name="midtrans-client-key"]')
+        ?.getAttribute("content");
+    const isProduction =
+        document
+            .querySelector('meta[name="midtrans-production"]')
+            ?.getAttribute("content") === "true";
+
+    if (!clientKey) {
+        console.warn("⚠️ Midtrans client key not found");
+        return;
+    }
+
+    // Check if Snap is already loaded
+    if (window.snap) {
+        console.log("✅ Midtrans Snap already loaded");
+        return;
+    }
+
+    const script = document.createElement("script");
+    script.src = isProduction
+        ? "https://app.midtrans.com/snap/snap.js"
+        : "https://app.sandbox.midtrans.com/snap/snap.js";
+    script.setAttribute("data-client-key", clientKey);
+
+    script.onload = function () {
+        console.log("✅ Midtrans Snap script loaded successfully");
+    };
+
+    script.onerror = function () {
+        console.error("❌ Failed to load Midtrans Snap script");
+    };
+
+    document.head.appendChild(script);
+}
+
+// Initialize Midtrans on demand
+function initializeMidtrans() {
+    if (typeof window.snap !== "undefined") {
+        return Promise.resolve();
+    }
+
+    console.log("📦 Loading Midtrans Snap...");
+    return new Promise((resolve, reject) => {
+        loadMidtransScript();
+
+        // Wait for script to load
+        const checkLoaded = setInterval(() => {
+            if (typeof window.snap !== "undefined") {
+                clearInterval(checkLoaded);
+                resolve();
+            }
+        }, 100);
+
+        // Timeout after 10 seconds
+        setTimeout(() => {
+            clearInterval(checkLoaded);
+            reject(new Error("Midtrans Snap failed to load"));
+        }, 10000);
+    });
+}
+
+// Enhanced Midtrans payment handler with dynamic loading
+function handleMidtransPayment(orderData) {
+    console.log("💳 Initializing Midtrans payment...", orderData);
+
+    const snapToken = orderData.snap_token;
+    if (!snapToken) {
+        console.error("❌ No Snap token received");
+        handleOrderError("Payment session not created. Please try again.");
+        return;
+    }
+
+    // Show payment processing message
+    showSuccess("💳 Loading payment gateway...");
+
+    // Initialize Midtrans and open payment
+    initializeMidtrans()
+        .then(() => {
+            console.log("🔐 Opening Midtrans Snap payment...");
+            showSuccess("💳 Opening payment gateway...");
+
+            // Open Midtrans Snap
+            window.snap.pay(snapToken, {
+                onSuccess: function (result) {
+                    console.log("✅ Payment successful:", result);
+                    showSuccess("✅ Payment successful! Redirecting...");
+
+                    // Redirect to success page
+                    if (result.order_id) {
+                        window.location.href = `/checkout/payment-success?order_id=${result.order_id}`;
+                    } else if (orderData.order_number) {
+                        window.location.href = `/checkout/success/${orderData.order_number}`;
+                    } else {
+                        window.location.href = "/orders";
+                    }
+                },
+                onPending: function (result) {
+                    console.log("⏳ Payment pending:", result);
+                    showWarning(
+                        "⏳ Payment is being processed. You will receive confirmation shortly."
+                    );
+
+                    // Redirect to order details
+                    setTimeout(() => {
+                        if (result.order_id) {
+                            window.location.href = `/checkout/success/${result.order_id}`;
+                        } else if (orderData.order_number) {
+                            window.location.href = `/checkout/success/${orderData.order_number}`;
+                        } else {
+                            window.location.href = "/orders";
+                        }
+                    }, 3000);
+                },
+                onError: function (result) {
+                    console.error("❌ Payment error:", result);
+                    handleOrderError(
+                        "Payment failed. Please try again or use a different payment method."
+                    );
+                },
+                onClose: function () {
+                    console.log("🔒 Payment popup closed by user");
+                    showWarning(
+                        "Payment was cancelled. You can complete payment later from your order history."
+                    );
+
+                    // Option to retry payment or go to orders
+                    setTimeout(() => {
+                        if (
+                            confirm(
+                                "Would you like to view your order and retry payment?"
+                            )
+                        ) {
+                            window.location.href = "/orders";
+                        } else {
+                            resetSubmitButton();
+                            // Optionally redirect to order success page for order details
+                            if (orderData.order_number) {
+                                window.location.href = `/checkout/success/${orderData.order_number}`;
+                            }
+                        }
+                    }, 1000);
+                },
+            });
+        })
+        .catch((error) => {
+            console.error("❌ Failed to initialize Midtrans:", error);
+            handleOrderError(
+                "Payment system not available. Please try again or contact support."
+            );
+        });
+}
+
+// Handle payment retry (if user wants to retry from order page)
+function retryPayment(orderNumber, snapToken) {
+    if (!snapToken) {
+        console.error("❌ No Snap token for retry");
+        alert("Payment session expired. Please create a new order.");
+        return;
+    }
+
+    console.log("🔄 Retrying payment for order:", orderNumber);
+
+    handleMidtransPayment({
+        snap_token: snapToken,
+        order_number: orderNumber,
+    });
+}
+
+// Payment status checker (for pending payments)
+function checkPaymentStatus(orderNumber) {
+    fetch(`/api/payment/status/${orderNumber}`, {
+        method: "GET",
+        headers: {
+            Accept: "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+        },
+    })
+        .then((response) => response.json())
+        .then((data) => {
+            console.log("💳 Payment status:", data);
+
+            if (data.payment_status === "paid") {
+                showSuccess("✅ Payment confirmed!");
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else if (
+                data.payment_status === "failed" ||
+                data.payment_status === "cancelled"
+            ) {
+                showError("❌ Payment failed or cancelled");
+            } else {
+                showWarning("⏳ Payment still pending...");
+            }
+        })
+        .catch((error) => {
+            console.error("❌ Failed to check payment status:", error);
+        });
+}
+
+// Test Midtrans integration
+function testMidtransIntegration() {
+    console.log("🧪 Testing Midtrans integration...");
+
+    if (typeof window.snap === "undefined") {
+        console.error("❌ Midtrans Snap not available");
+        return false;
+    }
+
+    console.log("✅ Midtrans Snap available");
+    return true;
+}
+
+// Function for manual form submission testing
+function testFormSubmission() {
+    console.log("🧪 Testing form submission manually...");
+
+    const form = document.getElementById("checkout-form");
+    if (!form) {
+        console.error("❌ Form not found");
+        return;
+    }
+
+    console.log("✅ Form found");
+    console.log("📋 Form elements:", form.elements.length);
+
+    // Trigger submit event
+    console.log("🚀 Triggering submit event...");
+    const submitEvent = new Event("submit", {
+        bubbles: true,
+        cancelable: true,
+    });
+    form.dispatchEvent(submitEvent);
+}
+
+// Make functions available globally for onclick handlers and debugging
 window.nextStep = nextStep;
 window.prevStep = prevStep;
 window.selectDestination = selectDestination;
@@ -743,3 +1429,25 @@ window.clearDestination = clearDestination;
 window.calculateShipping = calculateShipping;
 window.selectShipping = selectShipping;
 window.togglePassword = togglePassword;
+window.retryPayment = retryPayment;
+window.checkPaymentStatus = checkPaymentStatus;
+window.handleMidtransPayment = handleMidtransPayment;
+window.testFormSubmission = testFormSubmission;
+window.testMidtransIntegration = testMidtransIntegration;
+
+// Auto-initialize on specific pages
+if (window.location.pathname.includes("/checkout/payment/")) {
+    // If on payment page, ensure Midtrans is loaded
+    initializeMidtrans().catch(console.error);
+}
+
+// Debug information available in console
+console.log("🔧 Debug functions available:");
+console.log("  - testFormSubmission()");
+console.log("  - handleOrderSubmission('credit_card')");
+console.log("  - testMidtransIntegration()");
+console.log("  - openMidtransPayment(token, orderNumber)");
+
+console.log(
+    "🎯 Enhanced checkout with Midtrans integration loaded successfully!"
+);

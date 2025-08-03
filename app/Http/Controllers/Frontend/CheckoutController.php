@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\User;
+use App\Services\MidtransService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -21,9 +22,12 @@ class CheckoutController extends Controller
 {
     private $rajaOngkirApiKey;
     private $rajaOngkirBaseUrl;
+    private $midtransService;
 
-    public function __construct()
+    public function __construct(MidtransService $midtransService)
     {
+        $this->midtransService = $midtransService;
+        
         // RajaOngkir API V2 via Komerce - Fixed Format
         $this->rajaOngkirApiKey = config('services.rajaongkir.api_key') ?: env('RAJAONGKIR_API_KEY');
         $this->rajaOngkirBaseUrl = 'https://rajaongkir.komerce.id/api/v1';
@@ -32,7 +36,8 @@ class CheckoutController extends Controller
             'base_url' => $this->rajaOngkirBaseUrl,
             'api_key_set' => !empty($this->rajaOngkirApiKey),
             'origin_city' => env('STORE_ORIGIN_CITY_NAME', 'Not configured'),
-            'origin_city_id' => env('STORE_ORIGIN_CITY_ID', 'Not configured')
+            'origin_city_id' => env('STORE_ORIGIN_CITY_ID', 'Not configured'),
+            'midtrans_configured' => !empty(config('services.midtrans.server_key'))
         ]);
     }
 
@@ -68,6 +73,7 @@ class CheckoutController extends Controller
 
         return view('frontend.checkout.index', compact('cartItems', 'subtotal', 'provinces', 'majorCities', 'totalWeight'));
     }
+
 
     /**
      * Search destinations - Main method for location selection
@@ -309,6 +315,7 @@ class CheckoutController extends Controller
         // Get origin configuration from .env
         $originCityName = env('STORE_ORIGIN_CITY_NAME', 'jakarta selatan');
         $originCityIdFallback = env('STORE_ORIGIN_CITY_ID', 158);
+        // Jika .env ada membaca dari .env kalo tidak ada membaca default 158
         
         Log::info('Getting origin from .env', [
             'configured_city_name' => $originCityName,
@@ -602,141 +609,499 @@ class CheckoutController extends Controller
 
     // ... Rest of the methods (store, success, getCartItems, etc.) remain the same
     
-    public function store(Request $request)
-    {
-        // Enhanced validation for search-based approach
-        $request->validate([
-            // Personal Information
+public function store(Request $request)
+{
+    Log::info('=== CHECKOUT REQUEST START ===', [
+        'payment_method' => $request->payment_method,
+        'is_ajax' => $request->ajax(),
+        'content_type' => $request->header('Content-Type'),
+        'accept' => $request->header('Accept'),
+        'all_data' => $request->all(),
+        'url' => $request->url(),
+        'method' => $request->method()
+    ]);
+
+    // Enhanced validation with detailed error messages
+    try {
+        $validatedData = $request->validate([
             'social_title' => 'nullable|in:Mr.,Mrs.,Ms.,Miss',
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'email' => 'required|email|max:255',
             'phone' => 'required|string|max:20',
             'birthdate' => 'nullable|date|before:today',
-            
-            // Address Information (Modified for search-based)
             'address' => 'required|string|max:500',
-            'destination_id' => 'required|string', // Location ID from search
-            'destination_label' => 'required|string', // Full address label
+            'destination_id' => 'required|string',
+            'destination_label' => 'required|string',
             'postal_code' => 'required|string|max:10',
-            
-            // Shipping Information
             'shipping_method' => 'required|string',
             'shipping_cost' => 'required|numeric|min:0',
-            
-            // Optional account creation
-            'create_account' => 'boolean',
+            'payment_method' => 'required|in:bank_transfer,credit_card,ewallet,cod',
+            'create_account' => 'nullable|boolean',
             'password' => 'required_if:create_account,1|nullable|string|min:8',
             'password_confirmation' => 'required_if:create_account,1|nullable|string|same:password',
-            
-            // Privacy & Terms
-            'privacy_accepted' => 'required|boolean',
-            'newsletter_subscribe' => 'boolean'
+            'privacy_accepted' => 'required|accepted',
+            'newsletter_subscribe' => 'nullable|boolean',
+            'notes' => 'nullable|string|max:1000'
+        ], [
+            'privacy_accepted.required' => 'You must accept the privacy policy to continue.',
+            'privacy_accepted.accepted' => 'You must accept the privacy policy to continue.',
+            'destination_id.required' => 'Please select a delivery location.',
+            'destination_label.required' => 'Please select a delivery location.',
+            'shipping_method.required' => 'Please select a shipping method.',
+            'shipping_cost.required' => 'Shipping cost is required.',
+            'payment_method.required' => 'Please select a payment method.',
+            'payment_method.in' => 'Invalid payment method selected.',
+            'first_name.required' => 'First name is required.',
+            'last_name.required' => 'Last name is required.',
+            'email.required' => 'Email address is required.',
+            'email.email' => 'Please enter a valid email address.',
+            'phone.required' => 'Phone number is required.',
+            'address.required' => 'Street address is required.',
+            'postal_code.required' => 'Postal code is required.'
         ]);
 
-        try {
-            DB::beginTransaction();
+        Log::info('✅ Validation passed', [
+            'validated_fields' => array_keys($validatedData),
+            'payment_method' => $validatedData['payment_method']
+        ]);
 
-            // Get and validate cart
-            $cart = Session::get('cart', []);
-            
-            if (empty($cart)) {
-                throw new \Exception('Cart is empty');
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        Log::error('❌ Validation failed', [
+            'errors' => $e->errors(),
+            'input_data' => $request->all()
+        ]);
+
+        if ($request->ajax()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $e->errors(),
+                'message' => 'Validation failed. Please check the form fields.'
+            ], 422);
+        }
+
+        return back()->withErrors($e->errors())->withInput();
+    }
+    
+    // Additional privacy check - Double verification
+    if (!$request->has('privacy_accepted') || $request->privacy_accepted != '1') {
+        Log::error('❌ Privacy policy not accepted', [
+            'privacy_accepted' => $request->privacy_accepted,
+            'has_privacy_accepted' => $request->has('privacy_accepted')
+        ]);
+
+        if ($request->ajax()) {
+            return response()->json([
+                'success' => false,
+                'errors' => ['privacy_accepted' => ['You must accept the privacy policy to continue.']],
+                'message' => 'Privacy policy must be accepted.'
+            ], 422);
+        }
+        return back()->withInput()->withErrors([
+            'privacy_accepted' => 'You must accept the privacy policy to continue.'
+        ]);
+    }
+
+    try {
+        DB::beginTransaction();
+        Log::info('📊 Starting database transaction');
+
+        // Get and validate cart
+        $cart = Session::get('cart', []);
+        
+        if (empty($cart)) {
+            throw new \Exception('Cart is empty');
+        }
+
+        $cartItems = $this->getCartItems($cart);
+        
+        if ($cartItems->isEmpty()) {
+            throw new \Exception('No valid items in cart');
+        }
+
+        Log::info('🛒 Cart validated', [
+            'cart_count' => count($cart),
+            'valid_items' => $cartItems->count(),
+            'cart_items' => $cartItems->pluck('name')->toArray()
+        ]);
+
+        $subtotal = $cartItems->sum('subtotal');
+        $shippingCost = (float) $request->shipping_cost;
+        $taxRate = 0.11; // 11% PPN
+        $tax = $subtotal * $taxRate;
+        $totalAmount = $subtotal + $shippingCost + $tax;
+
+        Log::info('💰 Order calculations', [
+            'subtotal' => $subtotal,
+            'shipping_cost' => $shippingCost,
+            'tax_rate' => $taxRate,
+            'tax_amount' => $tax,
+            'total_amount' => $totalAmount
+        ]);
+
+        // Create user account if requested
+        $user = null;
+        if ($request->create_account && !Auth::check()) {
+            $existingUser = User::where('email', $request->email)->first();
+            if ($existingUser) {
+                throw new \Exception('Email already exists. Please login or use different email.');
             }
 
-            $cartItems = $this->getCartItems($cart);
+            $user = User::create([
+                'name' => $request->first_name . ' ' . $request->last_name,
+                'email' => $request->email,
+                'phone' => $request->phone,
+                'email_verified_at' => now(),
+                'password' => Hash::make($request->password),
+            ]);
+
+            Log::info('👤 User account created', [
+                'user_id' => $user->id,
+                'email' => $user->email
+            ]);
+        } elseif (Auth::check()) {
+            $user = Auth::user();
+            Log::info('👤 Using existing authenticated user', [
+                'user_id' => $user->id,
+                'email' => $user->email
+            ]);
+        }
+
+        // Generate unique order number
+        do {
+            $orderNumber = 'SF-' . date('Ymd') . '-' . strtoupper(Str::random(6));
+        } while (Order::where('order_number', $orderNumber)->exists());
+
+        Log::info('📋 Generated order number', ['order_number' => $orderNumber]);
+
+        // Create order
+        $orderData = [
+            'order_number' => $orderNumber,
+            'user_id' => $user ? $user->id : null,
+            'customer_name' => $request->first_name . ' ' . $request->last_name,
+            'customer_email' => $request->email,
+            'customer_phone' => $request->phone,
+            'shipping_address' => $request->address,
+            'shipping_destination_id' => $request->destination_id,
+            'shipping_destination_label' => $request->destination_label,
+            'shipping_postal_code' => $request->postal_code,
+            'shipping_method' => $request->shipping_method,
+            'shipping_cost' => $shippingCost,
+            'payment_method' => $request->payment_method,
+            'subtotal' => $subtotal,
+            'tax_amount' => $tax,
+            'total_amount' => $totalAmount,
+            'payment_status' => 'pending',
+            'order_status' => 'pending',
+            'notes' => $request->notes,
+            'created_at' => now(),
+            'updated_at' => now()
+        ];
+
+        $order = Order::create($orderData);
+        Log::info('📦 Order created', [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number
+        ]);
+
+        // Create order items and update stock
+        foreach ($cartItems as $item) {
+            $product = Product::lockForUpdate()->find($item['id']);
             
-            if ($cartItems->isEmpty()) {
-                throw new \Exception('No valid items in cart');
+            if (!$product || $product->stock_quantity < $item['quantity']) {
+                throw new \Exception("Insufficient stock for {$item['name']}. Available: " . ($product ? $product->stock_quantity : 0) . ", Requested: {$item['quantity']}");
             }
 
-            $subtotal = $cartItems->sum('subtotal');
-            $shippingCost = (float) $request->shipping_cost;
-            $taxRate = 0.11; // 11% PPN
-            $tax = $subtotal * $taxRate;
-            $totalAmount = $subtotal + $shippingCost + $tax;
+            OrderItem::create([
+                'order_id' => $order->id,
+                'product_id' => $item['id'],
+                'product_name' => $item['name'],
+                'product_sku' => $item['sku'] ?? '',
+                'product_price' => (float) $item['price'],
+                'quantity' => (int) $item['quantity'],
+                'total_price' => (float) $item['subtotal']
+            ]);
 
-            // Create user account if requested
-            $user = null;
-            if ($request->create_account && !Auth::check()) {
-                $existingUser = User::where('email', $request->email)->first();
-                if ($existingUser) {
-                    throw new \Exception('Email already exists. Please login or use different email.');
-                }
+            $product->decrement('stock_quantity', $item['quantity']);
+            
+            Log::info("📦 Order item created and stock updated", [
+                'product_id' => $item['id'],
+                'product_name' => $item['name'],
+                'quantity' => $item['quantity'],
+                'remaining_stock' => $product->stock_quantity - $item['quantity']
+            ]);
+        }
 
-                $user = User::create([
-                    'name' => $request->first_name . ' ' . $request->last_name,
-                    'email' => $request->email,
-                    'phone' => $request->phone,
-                    'email_verified_at' => now(),
-                    'password' => Hash::make($request->password),
+        DB::commit();
+        Log::info('✅ Database transaction committed successfully');
+
+        // Clear cart after successful order
+        Session::forget('cart');
+        Log::info('🛒 Cart cleared from session');
+
+        // Handle response based on payment method
+        if ($request->payment_method === 'cod') {
+            // COD - direct success
+            Log::info('🚚 COD payment selected - redirecting to success');
+            
+            if ($request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Order placed successfully! Payment will be collected on delivery.',
+                    'order_number' => $order->order_number,
+                    'redirect_url' => route('checkout.success', ['orderNumber' => $order->order_number])
                 ]);
-            } elseif (Auth::check()) {
-                $user = Auth::user();
+            } else {
+                return redirect()->route('checkout.success', ['orderNumber' => $order->order_number])
+                               ->with('success', 'Order placed successfully! Payment will be collected on delivery.');
             }
+        } else {
+            // Online payment - create Midtrans session
+            Log::info('💳 Online payment selected - creating Midtrans session');
+            
+            $snapToken = $this->createMidtransPayment($order, $cartItems, $request);
+            
+            if ($snapToken) {
+                Log::info('✅ Midtrans token created successfully', [
+                    'order_number' => $order->order_number,
+                    'snap_token' => substr($snapToken, 0, 10) . '...' // Don't log full token
+                ]);
 
-            // Generate unique order number
-            do {
-                $orderNumber = 'SF-' . date('Ymd') . '-' . strtoupper(Str::random(6));
-            } while (Order::where('order_number', $orderNumber)->exists());
-
-            // Create order with search-based address
-            $orderData = [
-                'order_number' => $orderNumber,
-                'user_id' => $user ? $user->id : null,
-                'customer_name' => $request->first_name . ' ' . $request->last_name,
-                'customer_email' => $request->email,
-                'customer_phone' => $request->phone,
-                'shipping_address' => $request->address,
-                'shipping_destination_id' => $request->destination_id,
-                'shipping_destination_label' => $request->destination_label,
-                'shipping_postal_code' => $request->postal_code,
-                'shipping_method' => $request->shipping_method,
-                'shipping_cost' => $shippingCost,
-                'subtotal' => $subtotal,
-                'tax_amount' => $tax,
-                'total_amount' => $totalAmount,
-                'payment_status' => 'pending',
-                'order_status' => 'pending',
-                'created_at' => now(),
-                'updated_at' => now()
-            ];
-
-            $order = Order::create($orderData);
-
-            // Create order items and update stock
-            foreach ($cartItems as $item) {
-                $product = Product::lockForUpdate()->find($item['id']);
+                if ($request->ajax()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Order created successfully. Opening payment gateway...',
+                        'order_number' => $order->order_number,
+                        'snap_token' => $snapToken,
+                        'redirect_url' => route('checkout.payment', ['orderNumber' => $order->order_number])
+                    ]);
+                } else {
+                    return redirect()->route('checkout.payment', ['orderNumber' => $order->order_number])
+                                   ->with('snap_token', $snapToken);
+                }
+            } else {
+                Log::error('❌ Failed to create Midtrans token', [
+                    'order_number' => $order->order_number
+                ]);
                 
-                if (!$product || $product->stock_quantity < $item['quantity']) {
-                    throw new \Exception("Insufficient stock for {$item['name']}");
+                if ($request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Failed to create payment session. Please try again or contact support.',
+                        'order_number' => $order->order_number
+                    ], 500);
+                } else {
+                    return redirect()->route('checkout.success', ['orderNumber' => $order->order_number])
+                                   ->with('error', 'Order created but payment session failed. Please contact support.');
                 }
-
-                OrderItem::create([
-                    'order_id' => $order->id,
-                    'product_id' => $item['id'],
-                    'product_name' => $item['name'],
-                    'product_sku' => $item['sku'] ?? '',
-                    'product_price' => (float) $item['price'],
-                    'quantity' => (int) $item['quantity'],
-                    'total_price' => (float) $item['subtotal']
-                ]);
-
-                $product->decrement('stock_quantity', $item['quantity']);
             }
+        }
 
-            DB::commit();
-            Session::forget('cart');
-
-            return redirect()->route('checkout.success', ['orderNumber' => $order->order_number])
-                           ->with('success', 'Order placed successfully!');
-
-        } catch (\Exception $e) {
-            DB::rollback();
-            Log::error('Checkout error: ' . $e->getMessage());
+    } catch (\Exception $e) {
+        DB::rollback();
+        Log::error('❌ Checkout error occurred', [
+            'error_message' => $e->getMessage(),
+            'error_file' => $e->getFile(),
+            'error_line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        if ($request->ajax()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to process checkout: ' . $e->getMessage(),
+                'debug_info' => config('app.debug') ? [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine()
+                ] : null
+            ], 500);
+        } else {
             return back()->withInput()->with('error', 'Failed to process checkout: ' . $e->getMessage());
         }
     }
+}
+
+    private function createMidtransPayment($order, $cartItems, $request)
+{
+    try {
+        Log::info('Creating Midtrans payment', [
+            'order_number' => $order->order_number,
+            'total_amount' => $order->total_amount
+        ]);
+
+        // Prepare item details for Midtrans
+        $itemDetails = [];
+        
+        foreach ($cartItems as $item) {
+            $itemDetails[] = [
+                'id' => $item['id'],
+                'price' => (int) $item['price'],
+                'quantity' => (int) $item['quantity'],
+                'name' => $item['name']
+            ];
+        }
+        
+        // Add shipping as item
+        if ($order->shipping_cost > 0) {
+            $itemDetails[] = [
+                'id' => 'shipping',
+                'price' => (int) $order->shipping_cost,
+                'quantity' => 1,
+                'name' => 'Shipping Cost - ' . $order->shipping_method
+            ];
+        }
+        
+        // Add tax as item
+        if ($order->tax_amount > 0) {
+            $itemDetails[] = [
+                'id' => 'tax',
+                'price' => (int) $order->tax_amount,
+                'quantity' => 1,
+                'name' => 'Tax (PPN 11%)'
+            ];
+        }
+
+        // Prepare order data for Midtrans
+        $midtransOrder = [
+            'order_id' => $order->order_number,
+            'gross_amount' => (int) $order->total_amount,
+            'customer' => [
+                'first_name' => $request->first_name,
+                'last_name' => $request->last_name,
+                'email' => $request->email,
+                'phone' => $request->phone
+            ],
+            'billing_address' => [
+                'address' => $request->address,
+                'city' => $request->destination_label,
+                'postal_code' => $request->postal_code
+            ],
+            'shipping_address' => [
+                'address' => $request->address,
+                'city' => $request->destination_label,
+                'postal_code' => $request->postal_code
+            ],
+            'items' => $itemDetails
+        ];
+
+        Log::info('Midtrans order data prepared', $midtransOrder);
+
+        $response = $this->midtransService->createSnapToken($midtransOrder);
+        
+        Log::info('Midtrans response received', $response);
+        
+        if ($response && isset($response['token'])) {
+            // Save snap token to order
+            $order->update(['snap_token' => $response['token']]);
+            
+            Log::info('Midtrans Snap Token created successfully', [
+                'order_number' => $order->order_number,
+                'snap_token' => $response['token']
+            ]);
+            
+            return $response['token'];
+        }
+
+        Log::error('Failed to create Midtrans Snap Token', [
+            'order_number' => $order->order_number,
+            'response' => $response
+        ]);
+
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('Midtrans payment creation error: ' . $e->getMessage(), [
+            'order_number' => $order->order_number,
+            'trace' => $e->getTraceAsString()
+        ]);
+        return null;
+    }
+}
+
+    public function payment($orderNumber)
+    {
+        $order = Order::with('orderItems.product')
+                     ->where('order_number', $orderNumber)
+                     ->firstOrFail();
+        
+        if ($order->payment_status !== 'pending') {
+            return redirect()->route('checkout.success', ['orderNumber' => $orderNumber]);
+        }
+
+        $snapToken = session('snap_token') ?: $order->snap_token;
+        
+        if (!$snapToken) {
+            return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
+                           ->with('error', 'Payment session expired. Please contact support.');
+        }
+
+        return view('frontend.checkout.payment', compact('order', 'snapToken'));
+    }
+
+    public function paymentSuccess(Request $request)
+    {
+        $orderNumber = $request->get('order_id');
+        
+        if ($orderNumber) {
+            $order = Order::where('order_number', $orderNumber)->first();
+            
+            if ($order) {
+                // Update payment status (will be confirmed by webhook)
+                $order->update(['payment_status' => 'processing']);
+                
+                return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
+                               ->with('success', 'Payment completed! We are processing your order.');
+            }
+        }
+        
+        return redirect()->route('home')->with('success', 'Payment completed successfully!');
+    }
+
+    public function paymentNotification(Request $request)
+    {
+        try {
+            $notification = $this->midtransService->handleNotification($request->all());
+            
+            if ($notification) {
+                $order = Order::where('order_number', $notification['order_id'])->first();
+                
+                if ($order) {
+                    $order->update([
+                        'payment_status' => $notification['payment_status'],
+                        'payment_response' => json_encode($notification['raw_notification'])
+                    ]);
+                    
+                    // Update order status based on payment
+                    if ($notification['payment_status'] === 'paid') {
+                        $order->update(['order_status' => 'confirmed']);
+                    } elseif (in_array($notification['payment_status'], ['failed', 'cancelled'])) {
+                        $order->update(['order_status' => 'cancelled']);
+                        
+                        // Restore stock
+                        foreach ($order->orderItems as $item) {
+                            $product = Product::find($item->product_id);
+                            if ($product) {
+                                $product->increment('stock_quantity', $item->quantity);
+                            }
+                        }
+                    }
+                    
+                    Log::info('Payment notification processed', [
+                        'order_number' => $notification['order_id'],
+                        'payment_status' => $notification['payment_status']
+                    ]);
+                }
+            }
+            
+            return response()->json(['status' => 'success']);
+            
+        } catch (\Exception $e) {
+            Log::error('Payment notification error: ' . $e->getMessage());
+            return response()->json(['status' => 'error'], 500);
+        }
+    }
+
+
 
     public function success($orderNumber)
     {

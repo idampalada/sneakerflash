@@ -4,6 +4,10 @@
 @section('title', 'Checkout - SneakerFlash')
 
 @section('content')
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<meta name="midtrans-client-key" content="{{ config('services.midtrans.client_key') }}">
+<meta name="midtrans-production" content="{{ config('services.midtrans.is_production') ? 'true' : 'false' }}">
+
 <div class="container mx-auto px-4 py-8">
     <div class="max-w-6xl mx-auto">
         <h1 class="text-3xl font-bold text-gray-900 mb-8">Checkout</h1>
@@ -49,8 +53,15 @@
             <span id="status-text"></span>
         </div>
 
+        <!-- FIXED: Form dengan action dan method yang benar -->
         <form action="{{ route('checkout.store') }}" method="POST" id="checkout-form">
             @csrf
+            
+            <!-- Hidden fields untuk data yang diperlukan -->
+            <input type="hidden" id="subtotal-value" value="{{ $subtotal ?? 0 }}">
+            <input type="hidden" id="total-weight" value="{{ $totalWeight ?? 1000 }}">
+            <input type="hidden" id="tax-rate" value="0.11">
+            
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <!-- Left Column: Checkout Steps -->
                 <div class="lg:col-span-2">
@@ -175,10 +186,16 @@
                                 </label>
                             </div>
                             
-                            <!-- Privacy Policy -->
+                            <!-- Privacy Policy - FIXED -->
                             <div class="mb-6">
                                 <label class="flex items-start">
-                                    <input type="checkbox" name="privacy_accepted" id="privacy_accepted" required class="mr-3 mt-1">
+                                    <input type="checkbox" 
+                                           name="privacy_accepted" 
+                                           id="privacy_accepted" 
+                                           value="1"
+                                           required 
+                                           class="mr-3 mt-1"
+                                           {{ old('privacy_accepted') ? 'checked' : '' }}>
                                     <div>
                                         <span class="text-sm font-medium">Customer data privacy *</span>
                                         <p class="text-xs text-gray-500 italic">*I agree to the processing of my personal data and accept the privacy policy.*</p>
@@ -302,40 +319,52 @@
                     <!-- Step 4: Payment -->
                     <div class="checkout-section hidden" id="section-4">
                         <div class="bg-white rounded-lg shadow-md p-6">
-                            <h2 class="text-xl font-semibold text-gray-900 mb-6">Payment</h2>
+                            <h2 class="text-xl font-semibold text-gray-900 mb-6">Payment Method</h2>
+                            <p class="text-sm text-gray-600 mb-6">Choose your preferred payment method. All payments are processed securely through Midtrans.</p>
                             
                             <div class="space-y-3 mb-6">
-                                <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
-                                    <input type="radio" name="payment_method" value="bank_transfer" checked class="mr-4">
+                                <!-- Online Payment Option -->
+                                <label class="flex items-center p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 border-blue-200 bg-blue-50">
+                                    <input type="radio" name="payment_method" value="credit_card" checked class="mr-4">
                                     <div class="flex-1">
-                                        <div class="font-medium">Bank Transfer</div>
-                                        <div class="text-sm text-gray-600">Transfer via ATM, Internet Banking, or Mobile Banking</div>
+                                        <div class="font-medium text-blue-800">Online Payment</div>
+                                        <div class="text-sm text-blue-600">Credit Card, Bank Transfer, E-Wallet, and more via Midtrans</div>
+                                        <div class="flex items-center mt-2 space-x-2">
+                                            <span class="text-xs bg-white px-2 py-1 rounded border">💳 Credit Card</span>
+                                            <span class="text-xs bg-white px-2 py-1 rounded border">🏦 Bank Transfer</span>
+                                            <span class="text-xs bg-white px-2 py-1 rounded border">📱 E-Wallet</span>
+                                            <span class="text-xs bg-white px-2 py-1 rounded border">+ More</span>
+                                        </div>
                                     </div>
                                 </label>
                                 
-                                <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
-                                    <input type="radio" name="payment_method" value="credit_card" class="mr-4">
-                                    <div class="flex-1">
-                                        <div class="font-medium">Credit Card</div>
-                                        <div class="text-sm text-gray-600">Visa, Mastercard, JCB</div>
-                                    </div>
-                                </label>
-                                
-                                <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
-                                    <input type="radio" name="payment_method" value="ewallet" class="mr-4">
-                                    <div class="flex-1">
-                                        <div class="font-medium">E-Wallet</div>
-                                        <div class="text-sm text-gray-600">GoPay, OVO, DANA, ShopeePay</div>
-                                    </div>
-                                </label>
-                                
+                                <!-- COD Option -->
                                 <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
                                     <input type="radio" name="payment_method" value="cod" class="mr-4">
                                     <div class="flex-1">
                                         <div class="font-medium">Cash on Delivery (COD)</div>
-                                        <div class="text-sm text-gray-600">Pay when the order is delivered</div>
+                                        <div class="text-sm text-gray-600">Pay when the order is delivered to your address</div>
+                                        <div class="text-xs text-orange-600 mt-1">⚠️ Additional COD fee may apply</div>
                                     </div>
                                 </label>
+                            </div>
+                            
+                            <!-- Payment Info -->
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                                <div class="flex items-start">
+                                    <div class="flex-shrink-0">
+                                        <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                        </svg>
+                                    </div>
+                                    <div class="ml-3">
+                                        <h3 class="text-sm font-medium text-blue-800">Secure Payment</h3>
+                                        <p class="text-sm text-blue-700 mt-1">
+                                            All online payments are processed securely through Midtrans. 
+                                            You'll see all available payment methods after clicking "Continue to Payment".
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                             
                             <!-- Order Notes -->
@@ -351,9 +380,10 @@
                                         class="flex-1 bg-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-400 transition-colors font-medium">
                                     Previous
                                 </button>
+                                <!-- FIXED: Submit button yang benar -->
                                 <button type="submit" id="place-order-btn" 
                                         class="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium">
-                                    Place Order
+                                    Continue to Payment
                                 </button>
                             </div>
                         </div>
@@ -362,62 +392,50 @@
 
                 <!-- Right Column: Order Summary -->
                 <div class="lg:col-span-1">
-                    <div class="bg-white rounded-lg shadow-md p-6 sticky top-4">
-                        <h2 class="text-xl font-semibold text-gray-900 mb-4">Order Summary</h2>
+                    <div class="bg-white rounded-lg shadow-md p-6 sticky top-8">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Order Summary</h3>
                         
-                        <!-- Cart Items Preview -->
-                        <div class="mb-4 max-h-40 overflow-y-auto">
-                            @foreach($cartItems as $item)
-                                <div class="flex items-center space-x-3 py-2 border-b border-gray-100 last:border-b-0">
-                                    <div class="w-12 h-12 bg-gray-200 rounded flex-shrink-0">
-                                        @if($item['image'])
-                                            <img src="{{ $item['image'] }}" alt="{{ $item['name'] }}" class="w-full h-full object-cover rounded">
-                                        @endif
+                        <!-- Cart Items -->
+                        @if(isset($cartItems) && $cartItems->count() > 0)
+                            <div class="space-y-3 mb-4">
+                                @foreach($cartItems as $item)
+                                    <div class="flex items-center space-x-3">
+                                        <div class="w-12 h-12 bg-gray-200 rounded overflow-hidden">
+                                            @if($item['image'])
+                                                <img src="{{ asset('storage/' . $item['image']) }}" alt="{{ $item['name'] }}" class="w-full h-full object-cover">
+                                            @endif
+                                        </div>
+                                        <div class="flex-1">
+                                            <p class="text-sm font-medium">{{ $item['name'] }}</p>
+                                            <p class="text-xs text-gray-500">Qty: {{ $item['quantity'] }}</p>
+                                        </div>
+                                        <p class="text-sm font-medium">Rp {{ number_format($item['subtotal'], 0, ',', '.') }}</p>
                                     </div>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-sm font-medium text-gray-900 truncate">{{ $item['name'] }}</p>
-                                        <p class="text-xs text-gray-500">Qty: {{ $item['quantity'] }} × Rp {{ number_format($item['price'], 0, ',', '.') }}</p>
-                                    </div>
-                                </div>
-                            @endforeach
-                        </div>
+                                @endforeach
+                            </div>
+                        @endif
                         
-                        <div class="mb-4">
-                            <p class="text-sm text-gray-600">{{ count($cartItems) }} Item{{ count($cartItems) > 1 ? 's' : '' }}</p>
-                        </div>
+                        <hr class="my-4">
                         
                         <!-- Order Totals -->
-                        <div class="border-t pt-4 space-y-2">
+                        <div class="space-y-2">
                             <div class="flex justify-between">
-                                <span class="text-gray-600">Subtotal:</span>
-                                <span class="font-semibold" id="subtotal-display">Rp {{ number_format($subtotal, 0, ',', '.') }}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-gray-600">Shipping:</span>
-                                <span class="font-semibold" id="shipping-display">Rp 0</span>
+                                <span class="text-sm">Subtotal</span>
+                                <span class="text-sm">Rp {{ number_format($subtotal ?? 0, 0, ',', '.') }}</span>
                             </div>
                             <div class="flex justify-between">
-                                <span class="text-gray-600">Tax (11%):</span>
-                                <span class="font-semibold" id="tax-display">Rp {{ number_format($subtotal * 0.11, 0, ',', '.') }}</span>
+                                <span class="text-sm">Shipping</span>
+                                <span class="text-sm" id="shipping-display">Rp 0</span>
                             </div>
-                            <div class="border-t pt-2">
-                                <div class="flex justify-between">
-                                    <span class="text-gray-900 font-semibold">Total:</span>
-                                    <span class="text-2xl font-bold text-blue-600" id="total-display">Rp {{ number_format($subtotal * 1.11, 0, ',', '.') }}</span>
-                                </div>
+                            <div class="flex justify-between">
+                                <span class="text-sm">Tax (PPN 11%)</span>
+                                <span class="text-sm" id="tax-display">Rp {{ number_format(($subtotal ?? 0) * 0.11, 0, ',', '.') }}</span>
                             </div>
-                        </div>
-                        
-                        <!-- Hidden inputs for JavaScript -->
-                        <input type="hidden" id="subtotal-value" value="{{ $subtotal }}">
-                        <input type="hidden" id="tax-rate" value="0.11">
-                        <input type="hidden" id="total-weight" value="{{ $totalWeight ?? 1000 }}">
-                        
-                        <!-- Security Badge -->
-                        <div class="mt-6 text-center">
-                            <p class="text-xs text-gray-500">
-                                🔒 Secure checkout with 256-bit SSL encryption
-                            </p>
+                            <hr class="my-2">
+                            <div class="flex justify-between text-lg font-semibold">
+                                <span>Total</span>
+                                <span id="total-display">Rp {{ number_format(($subtotal ?? 0) * 1.11, 0, ',', '.') }}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -510,7 +528,7 @@
 }
 </style>
 
-<!-- Load the separated JavaScript file -->
+<!-- FIXED: Load the JavaScript file -->
 <script src="{{ asset('js/simple-checkout.js') }}"></script>
-
+<script src="{{ asset('js/debug-checkout.js') }}"></script>
 @endsection

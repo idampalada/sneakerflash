@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <!-- Midtrans Configuration -->
+    <meta name="midtrans-client-key" content="{{ config('services.midtrans.client_key') }}">
+    <meta name="midtrans-production" content="{{ config('services.midtrans.is_production') ? 'true' : 'false' }}">
+    
     <title>@yield('title', 'SneakerFlash - Premium Sneakers')</title>
     
     <!-- Fonts -->
@@ -588,6 +592,29 @@
                 right: -3px;
             }
         }
+
+        /* Loading spinner untuk button */
+        .loading {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        
+        .loading::after {
+            content: "";
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            margin: auto;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 
     <script>
@@ -663,6 +690,31 @@
                 }
             });
         });
+
+        // Function untuk update cart dan wishlist count
+        function updateCartCount(count) {
+            const cartBadge = document.getElementById('cartCount');
+            if (cartBadge) {
+                if (count > 0) {
+                    cartBadge.textContent = count;
+                    cartBadge.style.display = 'flex';
+                } else {
+                    cartBadge.style.display = 'none';
+                }
+            }
+        }
+
+        function updateWishlistCount(count) {
+            const wishlistBadge = document.getElementById('wishlistCount');
+            if (wishlistBadge) {
+                if (count > 0) {
+                    wishlistBadge.textContent = count;
+                    wishlistBadge.style.display = 'flex';
+                } else {
+                    wishlistBadge.style.display = 'none';
+                }
+            }
+        }
     </script>
 </head>
 <body class="bg-gray-50">
@@ -738,76 +790,75 @@
                 </div>
 
                 <!-- User Menu / Auth - UPDATED with Cart & Wishlist -->
-                <!-- User Menu / Auth - UPDATED with Cart & Wishlist -->
-<div class="flex items-center space-x-3">
-    @auth
-        <!-- Wishlist Icon -->
-        <a href="{{ route('wishlist.index') }}" class="icon-btn" title="Wishlist">
-            <i class="fas fa-heart"></i>
-            @php
-                $wishlistCount = auth()->user()->getWishlistCount();
-            @endphp
-            @if($wishlistCount > 0)
-                <span class="icon-badge" id="wishlistCount">{{ $wishlistCount }}</span>
-            @else
-                <span class="icon-badge" id="wishlistCount" style="display: none;">0</span>
-            @endif
-        </a>
+                <div class="flex items-center space-x-3">
+                    @auth
+                        <!-- Wishlist Icon -->
+                        <a href="{{ route('wishlist.index') }}" class="icon-btn" title="Wishlist">
+                            <i class="fas fa-heart"></i>
+                            @php
+                                $wishlistCount = auth()->user()->getWishlistCount();
+                            @endphp
+                            @if($wishlistCount > 0)
+                                <span class="icon-badge" id="wishlistCount">{{ $wishlistCount }}</span>
+                            @else
+                                <span class="icon-badge" id="wishlistCount" style="display: none;">0</span>
+                            @endif
+                        </a>
 
-        <!-- Cart Icon -->
-        <a href="{{ route('cart.index') }}" class="icon-btn" title="Shopping Cart">
-            <i class="fas fa-shopping-cart"></i>
-            @php
-                $cartCount = count(session('cart', []));
-            @endphp
-            @if($cartCount > 0)
-                <span class="icon-badge" id="cartCount">{{ $cartCount }}</span>
-            @else
-                <span class="icon-badge" id="cartCount" style="display: none;">0</span>
-            @endif
-        </a>
+                        <!-- Cart Icon -->
+                        <a href="{{ route('cart.index') }}" class="icon-btn" title="Shopping Cart">
+                            <i class="fas fa-shopping-cart"></i>
+                            @php
+                                $cartCount = count(session('cart', []));
+                            @endphp
+                            @if($cartCount > 0)
+                                <span class="icon-badge" id="cartCount">{{ $cartCount }}</span>
+                            @else
+                                <span class="icon-badge" id="cartCount" style="display: none;">0</span>
+                            @endif
+                        </a>
 
-        <!-- User Dropdown -->
-        <div class="relative" x-data="userDropdown()" @click.away="close()">
-            <button @click="toggle()" class="user-menu-btn">
-                <i class="fas fa-user-circle text-xl"></i>
-                <span class="hidden md:inline text-sm ml-2">{{ auth()->user()->name }}</span>
-                <i class="fas fa-chevron-down text-sm ml-1"></i>
-            </button>
+                        <!-- User Dropdown -->
+                        <div class="relative" x-data="userDropdown()" @click.away="close()">
+                            <button @click="toggle()" class="user-menu-btn">
+                                <i class="fas fa-user-circle text-xl"></i>
+                                <span class="hidden md:inline text-sm ml-2">{{ auth()->user()->name }}</span>
+                                <i class="fas fa-chevron-down text-sm ml-1"></i>
+                            </button>
 
-            <!-- Dropdown Menu -->
-            <div class="user-dropdown" :class="{ 'show': open }">
-                <a href="{{ route('wishlist.index') }}" class="dropdown-item">
-                    <i class="fas fa-heart mr-2"></i>My Wishlist
-                    @if($wishlistCount > 0)
-                        <span class="ml-auto text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full">{{ $wishlistCount }}</span>
-                    @endif
-                </a>
-                <a href="{{ route('orders.index') }}" class="dropdown-item">
-                    <i class="fas fa-shopping-bag mr-2"></i>My Orders
-                </a>
-                <a href="{{ route('profile.index') }}" class="dropdown-item">
-                    <i class="fas fa-user mr-2"></i>Profile
-                </a>
-                <div style="border-top: 1px solid #f0f0f0; margin: 5px 0;"></div>
-                <form action="{{ route('logout') }}" method="POST" class="block">
-                    @csrf
-                    <button type="submit" class="dropdown-item">
-                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
-                    </button>
-                </form>
-            </div>
-        </div>
-    @else
-        <!-- Login/Register untuk guest -->
-        <a href="{{ route('login') }}" class="ka-auth-btn ka-login-btn">
-            Login
-        </a>
-        <a href="{{ route('register') }}" class="ka-auth-btn ka-register-btn">
-            Register
-        </a>
-    @endauth
-</div>
+                            <!-- Dropdown Menu -->
+                            <div class="user-dropdown" :class="{ 'show': open }">
+                                <a href="{{ route('wishlist.index') }}" class="dropdown-item">
+                                    <i class="fas fa-heart mr-2"></i>My Wishlist
+                                    @if($wishlistCount > 0)
+                                        <span class="ml-auto text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full">{{ $wishlistCount }}</span>
+                                    @endif
+                                </a>
+                                <a href="{{ route('orders.index') }}" class="dropdown-item">
+                                    <i class="fas fa-shopping-bag mr-2"></i>My Orders
+                                </a>
+                                <a href="{{ route('profile.index') }}" class="dropdown-item">
+                                    <i class="fas fa-user mr-2"></i>Profile
+                                </a>
+                                <div style="border-top: 1px solid #f0f0f0; margin: 5px 0;"></div>
+                                <form action="{{ route('logout') }}" method="POST" class="block">
+                                    @csrf
+                                    <button type="submit" class="dropdown-item">
+                                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    @else
+                        <!-- Login/Register untuk guest -->
+                        <a href="{{ route('login') }}" class="ka-auth-btn ka-login-btn">
+                            Login
+                        </a>
+                        <a href="{{ route('register') }}" class="ka-auth-btn ka-register-btn">
+                            Register
+                        </a>
+                    @endauth
+                </div>
                 <!-- Mobile Menu Button -->
                 <button @click="mobileMenuOpen = !mobileMenuOpen" class="md:hidden text-gray-600 hover:text-gray-800 ml-3">
                     <i class="fas fa-bars text-xl"></i>
@@ -1021,6 +1072,34 @@
             <i class="fas fa-chevron-right"></i>
         </button>
     </div>
+
+    <!-- Flash Messages -->
+    @if(session('success'))
+        <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mx-4 mt-4" role="alert">
+            <div class="flex items-center">
+                <i class="fas fa-check-circle mr-2"></i>
+                <span>{{ session('success') }}</span>
+            </div>
+        </div>
+    @endif
+
+    @if(session('error'))
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mx-4 mt-4" role="alert">
+            <div class="flex items-center">
+                <i class="fas fa-exclamation-circle mr-2"></i>
+                <span>{{ session('error') }}</span>
+            </div>
+        </div>
+    @endif
+
+    @if(session('warning'))
+        <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mx-4 mt-4" role="alert">
+            <div class="flex items-center">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                <span>{{ session('warning') }}</span>
+            </div>
+        </div>
+    @endif
 
     <!-- Main Content -->
     <main>

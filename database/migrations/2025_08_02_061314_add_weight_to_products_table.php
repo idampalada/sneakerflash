@@ -1,5 +1,5 @@
 <?php
-// File: database/migrations/xxxx_xx_xx_add_weight_to_products_table.php
+// File: database/migrations/2025_08_02_061314_add_weight_to_products_table.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -7,17 +7,29 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            $table->integer('weight')->default(300)->after('stock_quantity'); // weight in grams
+            // Check if weight column exists before adding
+            if (!Schema::hasColumn('products', 'weight')) {
+                $table->integer('weight')->default(300)->after('stock_quantity');
+            }
         });
     }
 
-    public function down()
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            $table->dropColumn('weight');
+            // Only drop if column exists
+            if (Schema::hasColumn('products', 'weight')) {
+                $table->dropColumn('weight');
+            }
         });
     }
 };
