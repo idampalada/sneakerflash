@@ -65,6 +65,8 @@ return [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect' => env('GOOGLE_REDIRECT_URI'),
+            'spreadsheet_id' => env('GOOGLE_VOUCHER_SPREADSHEET_ID', '1eZmdrZZnmWbSVA8iuaGKGwTHFlyIbnr5k9627LZGDpU'),
+    'voucher_sheet_name' => env('GOOGLE_VOUCHER_SHEET_NAME', 'Sheet1'),
     ],
 
     'google_maps' => [

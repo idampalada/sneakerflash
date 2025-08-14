@@ -20,6 +20,39 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Voucher Google Sheets Configuration (new)
+    |--------------------------------------------------------------------------
+    */
+    'voucher' => [
+        'spreadsheet_id' => env('GOOGLE_VOUCHER_SPREADSHEET_ID', '1eZmdrZZnmWbSVA8iuaGKGwTHFlyIbnr5k9627LZGDpU'),
+        'sheet_name' => env('GOOGLE_VOUCHER_SHEET_NAME', 'Sheet1'),
+        'range' => env('GOOGLE_VOUCHER_RANGE', 'A1:L1000'),
+        
+        'column_mapping' => [
+            'code_product' => 'code_Product',        // A
+            'voucher_code' => 'voucher_code',        // B  
+            'name_voucher' => 'name_voucher',        // C
+            'start' => 'start',                      // D
+            'end' => 'end',                          // E
+            'min_purchase' => 'min_purchase',        // F
+            'quota' => 'quota',                      // G
+            'claim_per_customer' => 'claim_per_customer', // H
+            'voucher_type' => 'voucher_type',        // I
+            'value' => 'value',                      // J
+            'discount_max' => 'discount_max',        // K
+            'category_customer' => 'category_customer' // L
+        ],
+        
+        'sync_settings' => [
+            'timeout' => 60,
+            'chunk_size' => 50,
+            'update_existing' => true,
+            'auto_activate' => true,
+        ]
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Sync Settings
     |--------------------------------------------------------------------------
     |
