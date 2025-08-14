@@ -149,7 +149,7 @@
                             <div class="product-card bg-white rounded-2xl overflow-hidden border border-gray-100 hover:shadow-lg transition-all duration-300 group">
                                 <div class="relative aspect-square bg-gray-50 overflow-hidden">
                                     @if($product->images && count($product->images) > 0)
-                                        <img src="{{ Storage::url($product->images[0]) }}" 
+                                        <img src="{{ $product->featured_image }}" 
                                              alt="{{ $product->name }}"
                                              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
                                     @else

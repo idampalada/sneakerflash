@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use App\Services\RajaOngkirService;
+use App\Models\Order;
+use App\Observers\OrderObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -17,6 +19,7 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot()
     {
-        //
+        // Register Order Observer untuk auto-sync user spending
+        Order::observe(OrderObserver::class);
     }
 }

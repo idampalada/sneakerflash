@@ -257,7 +257,7 @@ class WishlistController extends Controller
                     'name' => $product->name,
                     'price' => $product->sale_price ?? $product->price,
                     'quantity' => 1,
-                    'image' => $product->images[0] ?? null
+                    'image' => $product->featured_image ?? null
                 ];
             }
             

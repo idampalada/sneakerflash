@@ -1,3 +1,4 @@
+{{-- File: resources/views/frontend/cart/index.blade.php - NO TAX VERSION --}}
 @extends('layouts.app')
 
 @section('title', 'Shopping Cart - SneakerFlash')
@@ -17,10 +18,7 @@
         <div class="flex justify-between items-center">
             <h1 class="text-3xl font-bold text-gray-900">Shopping Cart</h1>
             <div class="text-gray-600">
-                @php
-                    $itemCount = isset($cartItems) ? $cartItems->count() : 0;
-                @endphp
-                {{ $itemCount }} items
+                {{ isset($cartItems) ? $cartItems->count() : 0 }} items
             </div>
         </div>
     </div>
@@ -33,70 +31,130 @@
             <div class="lg:col-span-2">
                 <div class="bg-white rounded-2xl shadow-md overflow-hidden border border-gray-100">
                     @foreach($cartItems as $item)
-                        <div class="p-6 border-b border-gray-200 last:border-b-0 cart-item" data-product-id="{{ $item['id'] }}">
+                        @php
+                            // Clean product name - remove SKU parent pattern AND size patterns
+                            $originalName = $item['name'] ?? 'Unknown Product';
+                            $skuParent = $item['sku_parent'] ?? '';
+                            
+                            $cleanProductName = $originalName;
+                            if (!empty($skuParent)) {
+                                $cleanProductName = preg_replace('/\s*-\s*' . preg_quote($skuParent, '/') . '\s*/', '', $cleanProductName);
+                                $cleanProductName = preg_replace('/\s*' . preg_quote($skuParent, '/') . '\s*/', '', $cleanProductName);
+                            }
+                            
+                            // Remove size patterns
+                            $cleanProductName = preg_replace('/\s*-\s*Size\s+[A-Z0-9.]+\s*$/i', '', $cleanProductName);
+                            $cleanProductName = preg_replace('/\s*Size\s+[A-Z0-9.]+\s*$/i', '', $cleanProductName);
+                            $cleanProductName = preg_replace('/\s*-\s*(XS|S|M|L|XL|XXL|XXXL|[0-9]+|[0-9]+\.[0-9]+)\s*$/i', '', $cleanProductName);
+                            
+                            $cleanProductName = trim($cleanProductName, ' -');
+                            
+                            // Size information
+                            $productSize = null;
+                            if (isset($item['size']) && !empty($item['size'])) {
+                                $productSize = is_array($item['size']) ? ($item['size'][0] ?? null) : $item['size'];
+                            } elseif (isset($item['product_options']['size'])) {
+                                $productSize = $item['product_options']['size'];
+                            }
+                            
+                            $hasValidSize = !empty($productSize) && 
+                                          $productSize !== 'One Size' && 
+                                          $productSize !== 'Default' &&
+                                          !is_array($productSize);
+                            
+                            // Cart key
+                            $cartKey = $item['cart_key'] ?? $item['id'] ?? 'unknown';
+                            
+                            // Price information
+                            $currentPrice = $item['price'] ?? 0;
+                            $originalPrice = $item['original_price'] ?? $currentPrice;
+                            $stockQuantity = $item['stock'] ?? 0;
+                            $currentQuantity = $item['quantity'] ?? 1;
+                            
+                            // Image URL with proper fallback
+                            $imageUrl = asset('images/default-product.jpg');
+                            if (!empty($item['image'])) {
+                                $imagePath = $item['image'];
+                                if (filter_var($imagePath, FILTER_VALIDATE_URL)) {
+                                    $imageUrl = $imagePath;
+                                } elseif (str_starts_with($imagePath, '/storage/')) {
+                                    $imageUrl = config('app.url') . $imagePath;
+                                } elseif (str_starts_with($imagePath, 'products/')) {
+                                    $imageUrl = config('app.url') . '/storage/' . $imagePath;
+                                } elseif (str_starts_with($imagePath, 'assets/') || str_starts_with($imagePath, 'images/')) {
+                                    $imageUrl = asset($imagePath);
+                                } else {
+                                    $imageUrl = config('app.url') . '/storage/products/' . $imagePath;
+                                }
+                            }
+                        @endphp
+                        
+                        <div class="p-6 border-b border-gray-200 last:border-b-0 cart-item" 
+                             data-product-id="{{ $item['id'] ?? '' }}" 
+                             data-cart-key="{{ $cartKey }}">
+                            
                             <div class="flex items-center space-x-4">
                                 <!-- Product Image -->
                                 <div class="flex-shrink-0">
-                                    @if($item['image'])
-                                        @php
-                                            $imageUrl = Storage::url($item['image']);
-                                        @endphp
-                                        <img src="{{ $imageUrl }}" 
-                                             alt="{{ $item['name'] }}"
-                                             class="w-24 h-24 object-cover rounded-xl">
-                                    @else
-                                        <div class="w-24 h-24 bg-gray-100 rounded-xl flex items-center justify-center">
-                                            <i class="fas fa-shoe-prints text-2xl text-gray-300"></i>
-                                        </div>
-                                    @endif
+                                    <img src="{{ $imageUrl }}" 
+                                         alt="{{ $cleanProductName }}"
+                                         class="w-24 h-24 object-cover rounded-xl"
+                                         onerror="this.src='{{ asset('images/default-product.jpg') }}'">
                                 </div>
 
                                 <!-- Product Info -->
                                 <div class="flex-1 min-w-0">
-                                    <h3 class="font-semibold text-gray-900 text-lg mb-1">{{ $item['name'] }}</h3>
-                                    @if($item['brand'])
+                                    <h3 class="font-semibold text-gray-900 text-lg mb-1">{{ $cleanProductName }}</h3>
+                                    
+                                    @if(!empty($item['brand']))
                                         <p class="text-sm text-gray-500 mb-1">{{ $item['brand'] }}</p>
                                     @endif
-                                    @if($item['category'])
+                                    
+                                    @if(!empty($item['category']))
                                         <p class="text-xs text-gray-400 uppercase tracking-wide mb-2">{{ $item['category'] }}</p>
                                     @endif
                                     
+                                    <!-- Size Display -->
+                                    @if($hasValidSize)
+                                        <div class="mb-2">
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                <i class="fas fa-ruler-combined mr-1"></i>
+                                                Size: {{ $productSize }}
+                                            </span>
+                                        </div>
+                                    @endif
+                                    
+                                    <!-- SKU Display -->
+                                    @if(!empty($item['sku']))
+                                        <p class="text-xs text-gray-400 mb-2">
+                                            SKU: {{ $item['sku'] }}
+                                        </p>
+                                    @endif
+                                    
                                     <!-- Price Display -->
-                                    <div class="flex items-center space-x-2">
-                                        @php
-                                            $currentPrice = $item['price'];
-                                            $originalPrice = $item['original_price'];
-                                            $formattedPrice = number_format($currentPrice, 0, ',', '.');
-                                            $formattedOriginalPrice = number_format($originalPrice, 0, ',', '.');
-                                        @endphp
-                                        
+                                    <div class="flex items-center space-x-2 mb-2">
                                         @if($currentPrice < $originalPrice)
                                             <span class="text-lg font-bold text-red-600">
-                                                Rp {{ $formattedPrice }}
+                                                Rp {{ number_format($currentPrice, 0, ',', '.') }}
                                             </span>
                                             <span class="text-sm text-gray-400 line-through">
-                                                Rp {{ $formattedOriginalPrice }}
+                                                Rp {{ number_format($originalPrice, 0, ',', '.') }}
                                             </span>
                                         @else
                                             <span class="text-lg font-bold text-gray-900">
-                                                Rp {{ $formattedPrice }}
+                                                Rp {{ number_format($currentPrice, 0, ',', '.') }}
                                             </span>
                                         @endif
                                     </div>
 
-                                    <!-- Stock Status - FIXED -->
-                                    @php
-                                        $stockQuantity = $item['stock'];
-                                        $isInStock = $stockQuantity > 0;
-                                    @endphp
-                                    
-                                    @if($isInStock)
-                                        <p class="text-xs text-green-600 mt-1">
+                                    <!-- Stock Status -->
+                                    @if($stockQuantity > 0)
+                                        <p class="text-xs text-green-600">
                                             <i class="fas fa-check-circle mr-1"></i>
                                             In Stock ({{ $stockQuantity }} left)
                                         </p>
                                     @else
-                                        <p class="text-xs text-red-600 mt-1">
+                                        <p class="text-xs text-red-600">
                                             <i class="fas fa-times-circle mr-1"></i>
                                             Out of Stock
                                         </p>
@@ -107,37 +165,31 @@
                                 <div class="flex flex-col items-center space-y-4">
                                     <div class="flex items-center space-x-0 border border-gray-200 rounded-lg overflow-hidden">
                                         <!-- DECREASE BUTTON -->
-                                        @php
-                                            $currentQuantity = $item['quantity'];
-                                            $maxStock = $item['stock'];
-                                            $decreaseDisabled = $currentQuantity <= 1 ? 'disabled' : '';
-                                            $increaseDisabled = $currentQuantity >= $maxStock ? 'disabled' : '';
-                                        @endphp
-                                        
                                         <button type="button" 
-                                                onclick="decreaseQuantity({{ $item['id'] }})"
+                                                onclick="decreaseQuantity('{{ $item['id'] ?? '' }}')"
                                                 class="decrease-btn w-10 h-10 bg-gray-50 hover:bg-gray-100 flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                {{ $decreaseDisabled }}
-                                                data-product-id="{{ $item['id'] }}">
+                                                {{ $currentQuantity <= 1 ? 'disabled' : '' }}
+                                                data-product-id="{{ $item['id'] ?? '' }}">
                                             <i class="fas fa-minus text-xs text-gray-600"></i>
                                         </button>
                                         
                                         <!-- QUANTITY INPUT -->
                                         <input type="number" 
-                                               id="quantity-{{ $item['id'] }}"
+                                               id="quantity-{{ $item['id'] ?? '' }}"
                                                value="{{ $currentQuantity }}" 
                                                min="1"
-                                               max="{{ $maxStock }}"
+                                               max="{{ $stockQuantity }}"
                                                class="quantity-input w-16 h-10 text-center border-0 focus:outline-none text-sm font-medium"
-                                               data-product-id="{{ $item['id'] }}"
+                                               data-product-id="{{ $item['id'] ?? '' }}"
+                                               data-cart-key="{{ $cartKey }}"
                                                data-original-value="{{ $currentQuantity }}">
                                         
                                         <!-- INCREASE BUTTON -->
                                         <button type="button" 
-                                                onclick="increaseQuantity({{ $item['id'] }})"
+                                                onclick="increaseQuantity('{{ $item['id'] ?? '' }}')"
                                                 class="increase-btn w-10 h-10 bg-gray-50 hover:bg-gray-100 flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                {{ $increaseDisabled }}
-                                                data-product-id="{{ $item['id'] }}">
+                                                {{ $currentQuantity >= $stockQuantity ? 'disabled' : '' }}
+                                                data-product-id="{{ $item['id'] ?? '' }}">
                                             <i class="fas fa-plus text-xs text-gray-600"></i>
                                         </button>
                                     </div>
@@ -145,12 +197,8 @@
                                     <!-- Subtotal -->
                                     <div class="text-center">
                                         <p class="text-sm text-gray-500">Subtotal</p>
-                                        @php
-                                            $subtotal = $item['subtotal'];
-                                            $formattedSubtotal = number_format($subtotal, 0, ',', '.');
-                                        @endphp
-                                        <p class="font-bold text-gray-900" id="subtotal-{{ $item['id'] }}">
-                                            Rp {{ $formattedSubtotal }}
+                                        <p class="font-bold text-gray-900" id="subtotal-{{ $item['id'] ?? '' }}">
+                                            Rp {{ number_format(($item['subtotal'] ?? 0), 0, ',', '.') }}
                                         </p>
                                     </div>
                                 </div>
@@ -158,20 +206,22 @@
                                 <!-- Remove Button -->
                                 <div class="flex flex-col space-y-2">
                                     @php
-                                        $productName = addslashes($item['name']);
+                                        $removeItemName = $cleanProductName;
+                                        if ($hasValidSize) {
+                                            $removeItemName .= " (Size: {$productSize})";
+                                        }
+                                        $removeItemName = addslashes($removeItemName);
                                     @endphp
+                                    
                                     <button type="button" 
-                                            onclick="removeFromCart({{ $item['id'] }}, '{{ $productName }}')"
+                                            onclick="removeFromCart('{{ $item['id'] ?? '' }}', '{{ $removeItemName }}')"
                                             class="text-red-600 hover:text-red-800 p-2 rounded-lg hover:bg-red-50 transition-all"
                                             title="Remove from cart">
                                         <i class="fas fa-trash text-lg"></i>
                                     </button>
                                     
-                                    @if($item['slug'])
-                                        @php
-                                            $productUrl = route('products.show', $item['slug']);
-                                        @endphp
-                                        <a href="{{ $productUrl }}" 
+                                    @if(!empty($item['slug']))
+                                        <a href="{{ route('products.show', $item['slug']) }}" 
                                            class="text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-50 transition-all"
                                            title="View product">
                                             <i class="fas fa-eye text-lg"></i>
@@ -185,10 +235,7 @@
 
                 <!-- Cart Actions -->
                 <div class="mt-6 flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0 bg-white rounded-2xl p-6 border border-gray-100">
-                    @php
-                        $productsUrl = route('products.index');
-                    @endphp
-                    <a href="{{ $productsUrl }}" class="flex items-center text-blue-600 hover:text-blue-800 font-medium transition-colors">
+                    <a href="{{ route('products.index') }}" class="flex items-center text-blue-600 hover:text-blue-800 font-medium transition-colors">
                         <i class="fas fa-arrow-left mr-2"></i>Continue Shopping
                     </a>
                     
@@ -196,7 +243,7 @@
                         <button type="button"
                                 onclick="syncCart()"
                                 class="flex items-center text-gray-600 hover:text-gray-800 font-medium transition-colors">
-                            <i class="fas fa-sync-alt mr-2"></i>Update Prices
+                            <i class="fas fa-sync-alt mr-2"></i>Update Cart
                         </button>
                         
                         <button type="button"
@@ -208,7 +255,7 @@
                 </div>
             </div>
 
-            <!-- Order Summary -->
+            <!-- Order Summary - NO TAX VERSION -->
             <div class="lg:col-span-1">
                 <div class="bg-white rounded-2xl shadow-md p-6 sticky top-4 border border-gray-100">
                     <h2 class="text-xl font-semibold text-gray-900 mb-6">Order Summary</h2>
@@ -217,7 +264,7 @@
                         @php
                             $totalItems = $cartItems->count();
                             $totalQuantity = $cartItems->sum('quantity');
-                            $formattedTotal = number_format($total, 0, ',', '.');
+                            $totalAmount = $total ?? 0;
                         @endphp
                         
                         <div class="flex justify-between text-sm">
@@ -227,7 +274,7 @@
                         
                         <div class="flex justify-between">
                             <span class="text-gray-600">Subtotal:</span>
-                            <span class="font-semibold" id="cartTotal">Rp {{ $formattedTotal }}</span>
+                            <span class="font-semibold" id="cartTotal">Rp {{ number_format($totalAmount, 0, ',', '.') }}</span>
                         </div>
                         
                         <div class="flex justify-between text-sm text-gray-500">
@@ -235,15 +282,12 @@
                             <span>Calculated at checkout</span>
                         </div>
                         
-                        <div class="flex justify-between text-sm text-gray-500">
-                            <span>Tax:</span>
-                            <span>Calculated at checkout</span>
-                        </div>
+                        <!-- REMOVED TAX DISPLAY -->
                         
                         <div class="border-t pt-4">
                             <div class="flex justify-between text-lg font-bold">
                                 <span>Total:</span>
-                                <span id="finalTotal">Rp {{ $formattedTotal }}</span>
+                                <span id="finalTotal">Rp {{ number_format($totalAmount, 0, ',', '.') }}</span>
                             </div>
                         </div>
                     </div>
@@ -258,7 +302,7 @@
                     <div class="mt-4 text-center">
                         <p class="text-xs text-gray-500 flex items-center justify-center">
                             <i class="fas fa-shield-alt mr-1"></i>
-                            Secure checkout with 256-bit SSL encryption
+                            Secure checkout with SSL encryption
                         </p>
                     </div>
 
@@ -284,24 +328,16 @@
                 <h2 class="text-2xl font-semibold text-gray-600 mb-4">Your cart is empty</h2>
                 <p class="text-gray-500 mb-8">Looks like you haven't added any items to your cart yet. Start browsing our amazing products!</p>
                 <div class="space-y-4">
-                    @php
-                        $productsUrl = route('products.index');
-                        $saleUrl = route('products.sale');
-                        $featuredUrl = route('products.index', ['featured' => '1']);
-                    @endphp
-                    
-                    <a href="{{ $productsUrl }}" 
+                    <a href="{{ route('products.index') }}" 
                        class="inline-block bg-black text-white px-8 py-3 rounded-xl hover:bg-gray-800 transition-colors font-medium">
                         <i class="fas fa-search mr-2"></i>Start Shopping
                     </a>
                     <div class="flex justify-center space-x-4 text-sm">
-                        <a href="{{ $saleUrl }}" class="text-red-600 hover:text-red-700 transition-colors">
-                            <i class="fas fa-percent mr-1"></i>
-                            Sale Items
+                        <a href="{{ route('products.sale') }}" class="text-red-600 hover:text-red-700 transition-colors">
+                            <i class="fas fa-percent mr-1"></i>Sale Items
                         </a>
-                        <a href="{{ $featuredUrl }}" class="text-yellow-600 hover:text-yellow-700 transition-colors">
-                            <i class="fas fa-star mr-1"></i>
-                            Featured Products
+                        <a href="{{ route('products.index', ['featured' => '1']) }}" class="text-yellow-600 hover:text-yellow-700 transition-colors">
+                            <i class="fas fa-star mr-1"></i>Featured Products
                         </a>
                     </div>
                 </div>
@@ -329,135 +365,35 @@
     </div>
 </div>
 
-<!-- Hidden data for JavaScript -->
-<script id="cartData" type="application/json">
-@php
-    $cartData = [
-        'checkoutUrl' => route('checkout.index'),
-        'csrfToken' => csrf_token()
-    ];
-@endphp
-{!! json_encode($cartData) !!}
-</script>
-
-<style>
-/* Cart specific animations */
-.cart-item {
-    transition: all 0.3s ease;
-}
-
-.cart-item.removing {
-    opacity: 0.5;
-    transform: scale(0.98);
-}
-
-.cart-item.loading {
-    opacity: 0.6;
-    pointer-events: none;
-}
-
-/* Quantity button states */
-.quantity-input:focus {
-    outline: 2px solid #3b82f6;
-    outline-offset: -2px;
-}
-
-.decrease-btn:disabled,
-.increase-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.decrease-btn:not(:disabled):hover,
-.increase-btn:not(:disabled):hover {
-    background-color: #f3f4f6;
-}
-
-/* Toast animation */
-#toastNotification {
-    animation: slideInRight 0.3s ease-out;
-}
-
-@keyframes slideInRight {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-
-/* Loading spinner */
-.loading-spinner {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    border: 2px solid #f3f3f3;
-    border-top: 2px solid #3498db;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-</style>
-
-<!-- JAVASCRIPT LENGKAP -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('=== CART PAGE LOADED ===');
+    console.log('🛒 Cart page loaded - NO TAX VERSION');
     
-    // Get cart data from hidden script tag
-    const cartDataElement = document.getElementById('cartData');
-    if (!cartDataElement) {
-        console.error('Cart data element not found');
+    // Get CSRF token
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (!token) {
+        console.error('❌ CSRF token not found');
         return;
     }
-    
-    let cartData;
-    try {
-        cartData = JSON.parse(cartDataElement.textContent);
-    } catch (e) {
-        console.error('Failed to parse cart data:', e);
-        return;
-    }
-    
-    const token = cartData.csrfToken;
-    const checkoutUrl = cartData.checkoutUrl;
-
-    console.log('CSRF token:', token ? 'Found' : 'Missing');
-    console.log('Checkout URL:', checkoutUrl);
-
-    // =================
-    // MAIN FUNCTIONS
-    // =================
 
     // Update cart function
     window.updateCart = function(productId, quantity) {
-        console.log(`=== UPDATE CART ===`);
-        console.log('Product ID:', productId);
-        console.log('New Quantity:', quantity);
+        console.log('📝 Updating cart:', productId, 'quantity:', quantity);
         
-        const cartItemElement = document.querySelector(`[data-product-id="${productId}"]`);
-        const quantityInput = document.getElementById(`quantity-${productId}`);
-        const decreaseBtn = cartItemElement?.querySelector('.decrease-btn');
-        const increaseBtn = cartItemElement?.querySelector('.increase-btn');
-        
-        if (!cartItemElement) {
-            console.error('Cart item element not found');
+        const cartItem = document.querySelector(`[data-product-id="${productId}"]`);
+        if (!cartItem) {
+            console.error('❌ Cart item not found');
             return;
         }
         
-        // Show loading state
-        cartItemElement.classList.add('loading');
-        if (decreaseBtn) decreaseBtn.disabled = true;
-        if (increaseBtn) increaseBtn.disabled = true;
+        const cartKey = cartItem.getAttribute('data-cart-key') || productId;
+        console.log('🔑 Using cart key:', cartKey);
+        
+        // Show loading
+        cartItem.style.opacity = '0.6';
+        cartItem.style.pointerEvents = 'none';
 
-        fetch(`/cart/${productId}`, {
+        fetch(`/cart/update/${encodeURIComponent(cartKey)}`, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
@@ -466,89 +402,71 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify({ quantity: quantity })
         })
-        .then(response => {
-            console.log('Response status:', response.status);
-            return response.json();
-        })
+        .then(response => response.json())
         .then(data => {
-            console.log('Response data:', data);
+            console.log('✅ Update response:', data);
             
             if (data.success) {
                 // Update quantity input
+                const quantityInput = document.getElementById(`quantity-${productId}`);
                 if (quantityInput) {
                     quantityInput.value = quantity;
                     quantityInput.setAttribute('data-original-value', quantity);
                 }
                 
                 // Update subtotal
-                const subtotalElement = document.getElementById(`subtotal-${productId}`);
-                if (subtotalElement && data.subtotal) {
-                    subtotalElement.textContent = `Rp ${new Intl.NumberFormat('id-ID').format(data.subtotal)}`;
+                const subtotalEl = document.getElementById(`subtotal-${productId}`);
+                if (subtotalEl && data.subtotal) {
+                    subtotalEl.textContent = `Rp ${new Intl.NumberFormat('id-ID').format(data.subtotal)}`;
                 }
-
+                
                 // Update button states
-                if (decreaseBtn) {
-                    decreaseBtn.disabled = quantity <= 1;
-                }
-                if (increaseBtn && data.stock) {
-                    increaseBtn.disabled = quantity >= data.stock;
-                }
-
-                // Update totals
+                const decreaseBtn = cartItem.querySelector('.decrease-btn');
+                const increaseBtn = cartItem.querySelector('.increase-btn');
+                if (decreaseBtn) decreaseBtn.disabled = quantity <= 1;
+                if (increaseBtn && data.stock) increaseBtn.disabled = quantity >= data.stock;
+                
+                // Update totals WITHOUT TAX
                 if (data.total) {
                     updateTotals(data.total);
                 }
-                if (data.cart_count !== undefined) {
-                    updateCartCount(data.cart_count);
-                }
                 
-                showToast(data.message || 'Cart updated successfully', 'success');
+                showToast('Cart updated successfully', 'success');
             } else {
-                // Revert quantity on error
-                if (quantityInput) {
-                    const originalValue = quantityInput.getAttribute('data-original-value') || '1';
-                    quantityInput.value = originalValue;
-                }
                 showToast(data.message || 'Failed to update cart', 'error');
+                // Revert quantity
+                const input = document.getElementById(`quantity-${productId}`);
+                if (input) {
+                    input.value = input.getAttribute('data-original-value') || '1';
+                }
             }
         })
         .catch(error => {
-            console.error('Update cart error:', error);
-            // Revert quantity on error
-            if (quantityInput) {
-                const originalValue = quantityInput.getAttribute('data-original-value') || '1';
-                quantityInput.value = originalValue;
+            console.error('💥 Update error:', error);
+            showToast('Network error. Please try again.', 'error');
+            // Revert quantity
+            const input = document.getElementById(`quantity-${productId}`);
+            if (input) {
+                input.value = input.getAttribute('data-original-value') || '1';
             }
-            showToast('Something went wrong. Please try again.', 'error');
         })
         .finally(() => {
-            // Remove loading state
-            cartItemElement.classList.remove('loading');
-            if (decreaseBtn) decreaseBtn.disabled = false;
-            if (increaseBtn) increaseBtn.disabled = false;
+            // Remove loading
+            cartItem.style.opacity = '';
+            cartItem.style.pointerEvents = '';
         });
     };
 
     // Increase quantity
     window.increaseQuantity = function(productId) {
-        console.log(`=== INCREASE QUANTITY ===`);
-        console.log('Product ID:', productId);
-        
         const input = document.getElementById(`quantity-${productId}`);
-        if (!input) {
-            console.error('Quantity input not found');
-            return;
-        }
+        if (!input) return;
         
-        const currentQuantity = parseInt(input.value) || 1;
-        const maxQuantity = parseInt(input.getAttribute('max')) || 999;
+        const current = parseInt(input.value) || 1;
+        const max = parseInt(input.getAttribute('max')) || 999;
         
-        console.log('Current:', currentQuantity, 'Max:', maxQuantity);
-        
-        if (currentQuantity < maxQuantity) {
-            const newQuantity = currentQuantity + 1;
-            console.log('New quantity:', newQuantity);
-            updateCart(productId, newQuantity);
+        if (current < max) {
+            updateCart(productId, current + 1);
         } else {
             showToast('Maximum stock reached', 'info');
         }
@@ -556,23 +474,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Decrease quantity
     window.decreaseQuantity = function(productId) {
-        console.log(`=== DECREASE QUANTITY ===`);
-        console.log('Product ID:', productId);
-        
         const input = document.getElementById(`quantity-${productId}`);
-        if (!input) {
-            console.error('Quantity input not found');
-            return;
-        }
+        if (!input) return;
         
-        const currentQuantity = parseInt(input.value) || 1;
+        const current = parseInt(input.value) || 1;
         
-        console.log('Current quantity:', currentQuantity);
-        
-        if (currentQuantity > 1) {
-            const newQuantity = currentQuantity - 1;
-            console.log('New quantity:', newQuantity);
-            updateCart(productId, newQuantity);
+        if (current > 1) {
+            updateCart(productId, current - 1);
         } else {
             showToast('Minimum quantity is 1', 'info');
         }
@@ -580,20 +488,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Remove from cart
     window.removeFromCart = function(productId, productName) {
-        console.log(`=== REMOVE FROM CART ===`);
-        console.log('Product ID:', productId);
-        console.log('Product Name:', productName);
-        
         if (!confirm(`Remove "${productName}" from cart?`)) {
             return;
         }
 
         const cartItem = document.querySelector(`[data-product-id="${productId}"]`);
+        const cartKey = cartItem ? cartItem.getAttribute('data-cart-key') : productId;
+        
         if (cartItem) {
-            cartItem.classList.add('removing');
+            cartItem.style.opacity = '0.5';
+            cartItem.style.transform = 'scale(0.95)';
         }
 
-        fetch(`/cart/${productId}`, {
+        fetch(`/cart/remove/${encodeURIComponent(cartKey)}`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -603,40 +510,33 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
-            console.log('Remove response:', data);
-            
             if (data.success) {
-                setTimeout(() => {
-                    if (cartItem) {
-                        cartItem.remove();
-                    }
-                    
-                    // Check if cart is empty
-                    const remainingItems = document.querySelectorAll('[data-product-id]').length;
-                    console.log('Remaining items:', remainingItems);
-                    
-                    if (remainingItems === 1) {
-                        setTimeout(() => location.reload(), 500);
-                    } else {
-                        recalculateCartTotals();
-                    }
-                }, 300);
-                
-                updateCartCount(data.cart_count);
-                showToast(data.message, 'info');
-            } else {
                 if (cartItem) {
-                    cartItem.classList.remove('removing');
+                    cartItem.remove();
                 }
+                
+                // Check if cart is empty
+                const remainingItems = document.querySelectorAll('[data-product-id]').length;
+                if (remainingItems === 0) {
+                    setTimeout(() => location.reload(), 500);
+                }
+                
+                showToast(data.message, 'success');
+            } else {
                 showToast(data.message || 'Failed to remove item', 'error');
+                if (cartItem) {
+                    cartItem.style.opacity = '';
+                    cartItem.style.transform = '';
+                }
             }
         })
         .catch(error => {
-            console.error('Remove cart error:', error);
+            console.error('💥 Remove error:', error);
+            showToast('Network error. Please try again.', 'error');
             if (cartItem) {
-                cartItem.classList.remove('removing');
+                cartItem.style.opacity = '';
+                cartItem.style.transform = '';
             }
-            showToast('Something went wrong. Please try again.', 'error');
         });
     };
 
@@ -646,7 +546,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        fetch('/cart', {
+        fetch('/cart/clear', {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -657,15 +557,15 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showToast(data.message, 'success');
+                showToast('Cart cleared successfully', 'success');
                 setTimeout(() => location.reload(), 1000);
             } else {
                 showToast(data.message || 'Failed to clear cart', 'error');
             }
         })
         .catch(error => {
-            console.error('Clear cart error:', error);
-            showToast('Something went wrong. Please try again.', 'error');
+            console.error('💥 Clear error:', error);
+            showToast('Network error. Please try again.', 'error');
         });
     };
 
@@ -683,7 +583,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             if (data.success) {
                 if (data.updated) {
-                    showToast('Cart updated with latest prices!', 'success');
+                    showToast('Cart updated with latest data!', 'success');
                     setTimeout(() => location.reload(), 1000);
                 } else {
                     showToast('Cart is already up to date', 'info');
@@ -693,127 +593,46 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            console.error('Sync cart error:', error);
-            showToast('Something went wrong. Please try again.', 'error');
+            console.error('💥 Sync error:', error);
+            showToast('Network error. Please try again.', 'error');
         });
     };
 
-    // Proceed to checkout - FIXED STOCK CHECK
+    // Proceed to checkout
     window.proceedToCheckout = function() {
-        // Check for items with zero stock
-        const cartItems = document.querySelectorAll('.cart-item');
-        let hasOutOfStockItems = false;
-        
-        cartItems.forEach(item => {
-            const quantityInput = item.querySelector('.quantity-input');
-            const maxStock = parseInt(quantityInput.getAttribute('max')) || 0;
-            
-            if (maxStock <= 0) {
-                hasOutOfStockItems = true;
-            }
-        });
-        
-        if (hasOutOfStockItems) {
-            showToast('Please remove out of stock items before checkout', 'error');
+        // Check for out of stock items
+        const outOfStockItems = document.querySelectorAll('[data-product-id]').length;
+        if (outOfStockItems === 0) {
+            showToast('Your cart is empty', 'error');
             return;
         }
         
-        window.location.href = checkoutUrl;
+        window.location.href = '{{ route("checkout.index") }}';
     };
 
-    // =================
-    // EVENT LISTENERS
-    // =================
-
-    // Handle direct input changes
-    document.querySelectorAll('.quantity-input').forEach(input => {
-        console.log('Setting up input listener for:', input.id);
-        
-        input.addEventListener('change', function() {
-            const productId = this.getAttribute('data-product-id');
-            const quantity = parseInt(this.value) || 1;
-            const minQuantity = parseInt(this.getAttribute('min')) || 1;
-            const maxQuantity = parseInt(this.getAttribute('max')) || 999;
-            
-            console.log('Input change:', productId, 'quantity:', quantity);
-            
-            if (quantity < minQuantity) {
-                this.value = minQuantity;
-                showToast(`Minimum quantity is ${minQuantity}`, 'info');
-                return;
-            }
-            
-            if (quantity > maxQuantity) {
-                this.value = maxQuantity;
-                showToast(`Maximum quantity is ${maxQuantity}`, 'info');
-                return;
-            }
-            
-            const originalValue = parseInt(this.getAttribute('data-original-value')) || 1;
-            if (quantity !== originalValue) {
-                updateCart(productId, quantity);
-            }
-        });
-        
-        input.addEventListener('keypress', function(e) {
-            if (!/[\d\b\t\x1b\r]/.test(String.fromCharCode(e.which))) {
-                e.preventDefault();
-            }
-        });
-        
-        input.addEventListener('blur', function() {
-            const quantity = parseInt(this.value) || 1;
-            const minQuantity = parseInt(this.getAttribute('min')) || 1;
-            if (quantity < minQuantity) {
-                this.value = minQuantity;
-            }
-        });
-    });
-
-    // =================
-    // HELPER FUNCTIONS
-    // =================
-
+    // Helper functions
     function updateTotals(total) {
-        const formattedTotal = `Rp ${new Intl.NumberFormat('id-ID').format(total)}`;
+        // NO TAX VERSION - only update subtotal and final total (no tax calculation)
+        const formatted = `Rp ${new Intl.NumberFormat('id-ID').format(total)}`;
+        const cartTotal = document.getElementById('cartTotal');
+        const finalTotal = document.getElementById('finalTotal');
         
-        const cartTotalElement = document.getElementById('cartTotal');
-        const finalTotalElement = document.getElementById('finalTotal');
+        if (cartTotal) cartTotal.textContent = formatted;
+        if (finalTotal) finalTotal.textContent = formatted;
         
-        if (cartTotalElement) cartTotalElement.textContent = formattedTotal;
-        if (finalTotalElement) finalTotalElement.textContent = formattedTotal;
+        console.log('💰 Updated totals (NO TAX):', { total, formatted });
     }
 
-    function recalculateCartTotals() {
-        let total = 0;
-        document.querySelectorAll('[id^="subtotal-"]').forEach(element => {
-            const subtotalText = element.textContent.replace(/[^\d]/g, '');
-            total += parseInt(subtotalText) || 0;
-        });
-        updateTotals(total);
-    }
-
-    function updateCartCount(count) {
-        const cartBadge = document.getElementById('cartCount');
-        if (cartBadge) {
-            cartBadge.textContent = count;
-            cartBadge.style.display = count > 0 ? 'inline' : 'none';
-        }
-    }
-
-    function showToast(message, type) {
-        type = type || 'success';
+    function showToast(message, type = 'success') {
         const toast = document.getElementById('toastNotification');
         const icon = document.getElementById('toastIcon');
         const messageEl = document.getElementById('toastMessage');
         
-        if (!toast || !icon || !messageEl) {
-            console.error('Toast elements not found');
-            return;
-        }
+        if (!toast || !icon || !messageEl) return;
         
         messageEl.textContent = message;
         
+        // Set icon based on type
         icon.className = 'fas ';
         switch(type) {
             case 'success':
@@ -840,112 +659,65 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // =================
-    // INITIALIZATION
-    // =================
-
-    // Test all buttons on page load
-    console.log('=== TESTING BUTTONS ===');
-    
-    const decreaseButtons = document.querySelectorAll('.decrease-btn');
-    const increaseButtons = document.querySelectorAll('.increase-btn');
-    const quantityInputs = document.querySelectorAll('.quantity-input');
-    
-    console.log('Decrease buttons found:', decreaseButtons.length);
-    console.log('Increase buttons found:', increaseButtons.length);
-    console.log('Quantity inputs found:', quantityInputs.length);
-    
-    // Test button clicks
-    decreaseButtons.forEach((btn, index) => {
-        const productId = btn.getAttribute('data-product-id');
-        console.log(`Decrease button ${index + 1}: Product ID = ${productId}`);
-        
-        // Test click event
-        btn.addEventListener('click', function() {
-            console.log('Decrease button clicked via event listener');
-        });
-    });
-    
-    increaseButtons.forEach((btn, index) => {
-        const productId = btn.getAttribute('data-product-id');
-        console.log(`Increase button ${index + 1}: Product ID = ${productId}`);
-        
-        // Test click event
-        btn.addEventListener('click', function() {
-            console.log('Increase button clicked via event listener');
+    // Handle quantity input changes
+    document.querySelectorAll('.quantity-input').forEach(input => {
+        input.addEventListener('change', function() {
+            const productId = this.getAttribute('data-product-id');
+            const quantity = parseInt(this.value) || 1;
+            const originalValue = parseInt(this.getAttribute('data-original-value')) || 1;
+            
+            if (quantity !== originalValue && quantity >= 1) {
+                this.setAttribute('data-original-value', quantity);
+                updateCart(productId, quantity);
+            }
         });
     });
 
-    // Auto-sync cart after 2 seconds
-    setTimeout(() => {
-        console.log('=== AUTO-SYNC CART ===');
-        fetch('/cart/sync', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': token
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            console.log('Auto-sync result:', data);
-            if (data.updated) {
-                console.log('Cart was updated, reloading...');
-                location.reload();
-            }
-        })
-        .catch(error => {
-            console.log('Auto-sync failed:', error);
-        });
-    }, 2000);
-
-    console.log('=== CART INITIALIZATION COMPLETE ===');
+    console.log('✅ Cart JavaScript initialized - NO TAX VERSION');
 });
-
-// =================
-// GLOBAL TEST FUNCTIONS
-// =================
-
-// Test functions yang bisa dipanggil dari console browser
-window.testIncrease = function(productId) {
-    console.log('Testing increase for product:', productId);
-    increaseQuantity(productId);
-};
-
-window.testDecrease = function(productId) {
-    console.log('Testing decrease for product:', productId);
-    decreaseQuantity(productId);
-};
-
-window.testUpdate = function(productId, quantity) {
-    console.log('Testing update for product:', productId, 'quantity:', quantity);
-    updateCart(productId, quantity);
-};
-
-// Debug function untuk melihat semua data cart
-window.debugCart = function() {
-    console.log('=== CART DEBUG INFO ===');
-    
-    const cartItems = document.querySelectorAll('[data-product-id]');
-    console.log('Cart items found:', cartItems.length);
-    
-    cartItems.forEach((item, index) => {
-        const productId = item.getAttribute('data-product-id');
-        const quantityInput = document.getElementById(`quantity-${productId}`);
-        const decreaseBtn = item.querySelector('.decrease-btn');
-        const increaseBtn = item.querySelector('.increase-btn');
-        
-        console.log(`Item ${index + 1}:`, {
-            productId: productId,
-            currentQuantity: quantityInput ? quantityInput.value : 'NOT FOUND',
-            maxStock: quantityInput ? quantityInput.getAttribute('max') : 'NOT FOUND',
-            decreaseDisabled: decreaseBtn ? decreaseBtn.disabled : 'NOT FOUND',
-            increaseDisabled: increaseBtn ? increaseBtn.disabled : 'NOT FOUND'
-        });
-    });
-    
-    console.log('=== END DEBUG ===');
-};
 </script>
+
+<style>
+/* Cart specific styles */
+.cart-item {
+    transition: all 0.3s ease;
+}
+
+.quantity-input:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: -2px;
+}
+
+#toastNotification {
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Button states */
+.decrease-btn:disabled,
+.increase-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.decrease-btn:not(:disabled):hover,
+.increase-btn:not(:disabled):hover {
+    background-color: #f3f4f6;
+}
+
+/* Error fallback for images */
+img[src=""], img:not([src]) {
+    display: none;
+}
+</style>
 @endsection

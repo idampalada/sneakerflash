@@ -1,12 +1,45 @@
-{{-- File: resources/views/frontend/checkout/index.blade.php --}}
+{{-- File: resources/views/frontend/checkout/index.blade.php - COMPLETE NO TAX VERSION + VOUCHER SUPPORT --}}
 @extends('layouts.app')
 
 @section('title', 'Checkout - SneakerFlash')
 
 @section('content')
-<meta name="csrf-token" content="{{ csrf_token() }}">
 <meta name="midtrans-client-key" content="{{ config('services.midtrans.client_key') }}">
 <meta name="midtrans-production" content="{{ config('services.midtrans.is_production') ? 'true' : 'false' }}">
+<meta name="cart-subtotal" content="{{ $subtotal ?? 0 }}">
+<meta name="total-weight" content="{{ $totalWeight ?? 1000 }}">
+<meta name="user-authenticated" content="{{ Auth::check() ? 'true' : 'false' }}">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<meta name="user-has-primary-address" content="{{ $userHasPrimaryAddress ? 'true' : 'false' }}">
+<meta name="primary-address-id" content="{{ $primaryAddressId ?? 'null' }}">
+<meta name="authenticated-user-name" content="{{ $authenticatedUserName ?? '' }}">
+<meta name="authenticated-user-phone" content="{{ $authenticatedUserPhone ?? '' }}">
+<meta name="store-origin-city" content="{{ env('STORE_ORIGIN_CITY_NAME', 'Jakarta') }}">
+
+{{-- CRITICAL FIX: Add user email meta tag --}}
+@if(Auth::check())
+    <meta name="user-email" content="{{ Auth::user()->email }}">
+@endif
+
+@php
+    $primaryAddressId = null;
+    $userHasPrimaryAddress = false;
+    
+    if(Auth::check()) {
+        $primaryAddressQuery = \App\Models\UserAddress::where('user_id', Auth::id())
+                                    ->where('is_primary', true)
+                                    ->where('is_active', true)
+                                    ->first();
+        if($primaryAddressQuery) {
+            $primaryAddressId = $primaryAddressQuery->id;
+            $userHasPrimaryAddress = true;
+        }
+    }
+    
+    $authenticatedUserName = Auth::check() ? Auth::user()->name : '';
+    $authenticatedUserPhone = Auth::check() ? Auth::user()->phone : '';
+    $authenticatedUserEmail = Auth::check() ? Auth::user()->email : '';
+@endphp
 
 <div class="container mx-auto px-4 py-8">
     <div class="max-w-6xl mx-auto">
@@ -53,15 +86,8 @@
             <span id="status-text"></span>
         </div>
 
-        <!-- FIXED: Form dengan action dan method yang benar -->
         <form action="{{ route('checkout.store') }}" method="POST" id="checkout-form">
             @csrf
-            
-            <!-- Hidden fields untuk data yang diperlukan -->
-            <input type="hidden" id="subtotal-value" value="{{ $subtotal ?? 0 }}">
-            <input type="hidden" id="total-weight" value="{{ $totalWeight ?? 1000 }}">
-            <input type="hidden" id="tax-rate" value="0.11">
-            
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <!-- Left Column: Checkout Steps -->
                 <div class="lg:col-span-2">
@@ -85,55 +111,58 @@
                                 </div>
                             @endif
                             
-                            <!-- Social Title -->
+                            <!-- Gender Selection -->
                             <div class="mb-4">
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Social title</label>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Gender</label>
                                 <div class="flex space-x-4">
                                     <label class="flex items-center">
-                                        <input type="radio" name="social_title" value="Mr." class="mr-2" {{ old('social_title') == 'Mr.' ? 'checked' : '' }}>
-                                        <span class="text-sm">Mr.</span>
+                                        <input type="radio" name="gender" value="mens" class="mr-2" 
+                                               {{ old('gender', Auth::user()->gender ?? '') == 'mens' ? 'checked' : '' }}>
+                                        <span class="text-sm">Mens</span>
                                     </label>
                                     <label class="flex items-center">
-                                        <input type="radio" name="social_title" value="Mrs." class="mr-2" {{ old('social_title') == 'Mrs.' ? 'checked' : '' }}>
-                                        <span class="text-sm">Mrs.</span>
+                                        <input type="radio" name="gender" value="womens" class="mr-2" 
+                                               {{ old('gender', Auth::user()->gender ?? '') == 'womens' ? 'checked' : '' }}>
+                                        <span class="text-sm">Womens</span>
                                     </label>
                                     <label class="flex items-center">
-                                        <input type="radio" name="social_title" value="Ms." class="mr-2" {{ old('social_title') == 'Ms.' ? 'checked' : '' }}>
-                                        <span class="text-sm">Ms.</span>
+                                        <input type="radio" name="gender" value="kids" class="mr-2" 
+                                               {{ old('gender', Auth::user()->gender ?? '') == 'kids' ? 'checked' : '' }}>
+                                        <span class="text-sm">Kids</span>
                                     </label>
                                 </div>
                             </div>
                             
-                            <!-- Name Fields -->
+                            <!-- Name Fields - FIXED: Better auto-fill -->
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                 <div>
                                     <label for="first_name" class="block text-sm font-medium text-gray-700 mb-2">First name *</label>
                                     <input type="text" name="first_name" id="first_name" required
-                                           value="{{ old('first_name') }}"
+                                           value="{{ old('first_name', Auth::check() ? (explode(' ', Auth::user()->name ?? '', 2)[0] ?? '') : '') }}"
                                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
                                 </div>
                                 
                                 <div>
                                     <label for="last_name" class="block text-sm font-medium text-gray-700 mb-2">Last name *</label>
                                     <input type="text" name="last_name" id="last_name" required
-                                           value="{{ old('last_name') }}"
+                                           value="{{ old('last_name', Auth::check() ? (explode(' ', Auth::user()->name ?? '', 2)[1] ?? '') : '') }}"
                                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
                                 </div>
                             </div>
                             
-                            <!-- Email -->
+                            <!-- Email - FIXED: Proper auto-fill -->
                             <div class="mb-4">
                                 <label for="email" class="block text-sm font-medium text-gray-700 mb-2">Email *</label>
                                 <input type="email" name="email" id="email" required
-                                       value="{{ old('email') }}"
+                                       value="{{ old('email', $authenticatedUserEmail ?? (Auth::user()->email ?? '')) }}"
                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
                             </div>
                             
-                            <!-- Phone -->
+                            <!-- Phone - FIXED: Proper auto-fill -->
                             <div class="mb-4">
                                 <label for="phone" class="block text-sm font-medium text-gray-700 mb-2">Phone *</label>
                                 <input type="tel" name="phone" id="phone" required
-                                       value="{{ old('phone') }}"
+                                       value="{{ old('phone', $authenticatedUserPhone ?? (Auth::user()->phone ?? '')) }}"
                                        placeholder="08xxxxxxxxxx"
                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
                             </div>
@@ -144,7 +173,7 @@
                                     <span class="text-gray-400">Optional</span> Birthdate
                                 </label>
                                 <input type="date" name="birthdate" id="birthdate"
-                                       value="{{ old('birthdate') }}"
+                                       value="{{ old('birthdate', Auth::user()->birthdate ? Auth::user()->birthdate->format('Y-m-d') : '') }}"
                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
                             </div>
                             
@@ -186,7 +215,7 @@
                                 </label>
                             </div>
                             
-                            <!-- Privacy Policy - FIXED -->
+                            <!-- Privacy Policy -->
                             <div class="mb-6">
                                 <label class="flex items-start">
                                     <input type="checkbox" 
@@ -210,65 +239,205 @@
                         </div>
                     </div>
 
-                    <!-- Step 2: Delivery Address -->
+                    <!-- Step 2: Delivery Address - UPDATED WITH ADDRESS INTEGRATION -->
                     <div class="checkout-section hidden" id="section-2">
                         <div class="bg-white rounded-lg shadow-md p-6">
                             <h2 class="text-xl font-semibold text-gray-900 mb-6">Delivery Address</h2>
-                            <p class="text-sm text-gray-600 mb-6">Search and select your delivery location using RajaOngkir V2.</p>
                             
-                            <div class="space-y-4">
-                                <!-- Address -->
-                                <div>
-                                    <label for="address" class="block text-sm font-medium text-gray-700 mb-2">Street Address *</label>
-                                    <textarea name="address" id="address" rows="3" required
-                                              placeholder="Enter your complete street address"
-                                              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">{{ old('address') }}</textarea>
+                            @if(Auth::check() && $userAddresses->count() > 0)
+                                <!-- Existing Addresses for Logged In Users -->
+                                <div class="mb-6">
+                                    <h3 class="text-lg font-medium text-gray-900 mb-4">Select Saved Address</h3>
+                                    <div class="space-y-3" id="saved-addresses">
+                                        @foreach($userAddresses as $address)
+                                            <label class="flex items-start p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors {{ $address->is_primary ? 'border-orange-500 bg-orange-50' : 'border-gray-200' }}" 
+                                                   data-address-id="{{ $address->id }}">
+                                                <input type="radio" 
+                                                       name="saved_address_id" 
+                                                       value="{{ $address->id }}" 
+                                                       class="mt-1 mr-4" 
+                                                       {{ $address->is_primary ? 'checked' : '' }}
+                                                       data-address-id="{{ $address->id }}"
+                                                       onchange="loadSavedAddress(this.dataset.addressId)">
+                                                <div class="flex-1">
+                                                    <div class="flex items-center mb-2">
+                                                        <span class="font-medium text-gray-900">{{ $address->label }}</span>
+                                                        @if($address->is_primary)
+                                                            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                                                Primary
+                                                            </span>
+                                                        @endif
+                                                    </div>
+                                                    <div class="text-sm text-gray-700">
+                                                        <p class="font-medium">{{ $address->recipient_name }}</p>
+                                                        <p>{{ $address->phone_recipient }}</p>
+                                                        <p>{{ $address->street_address }}</p>
+                                                        <p class="text-gray-500">{{ $address->location_string }}</p>
+                                                    </div>
+                                                </div>
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                    
+                                    <!-- Add New Address Option -->
+                                    <label class="flex items-center p-4 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors mt-3">
+                                        <input type="radio" name="saved_address_id" value="new" class="mr-4" onchange="showNewAddressForm()">
+                                        <div class="text-center w-full">
+                                            <svg class="w-6 h-6 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                                            </svg>
+                                            <span class="text-sm font-medium text-gray-700">Add New Address</span>
+                                        </div>
+                                    </label>
                                 </div>
                                 
-                                <!-- Location Search -->
-                                <div class="relative">
-                                    <label for="destination_search" class="block text-sm font-medium text-gray-700 mb-2">
-                                        Search Your Location * 
-                                        <span class="text-xs text-gray-500">(Type at least 2 characters)</span>
-                                    </label>
-                                    <input type="text" 
-                                           id="destination_search" 
-                                           placeholder="e.g., kebayoran lama, jakarta selatan"
-                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                                           autocomplete="off">
-                                    
-                                    <!-- Search Results -->
-                                    <div id="search-results" class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                                        <!-- Results will be populated here -->
+                                <!-- Divider -->
+                                <div class="relative mb-6">
+                                    <div class="absolute inset-0 flex items-center">
+                                        <div class="w-full border-t border-gray-300"></div>
+                                    </div>
+                                    <div class="relative flex justify-center text-sm">
+                                        <span class="px-2 bg-white text-gray-500">Or use different address</span>
                                     </div>
                                 </div>
+                            @endif
+                            
+                            <!-- New Address Form -->
+                            <div id="new-address-form" class="{{ Auth::check() && $userAddresses->count() > 0 ? 'hidden' : '' }}">
+                                <h3 class="text-lg font-medium text-gray-900 mb-4">
+                                    {{ Auth::check() && $userAddresses->count() > 0 ? 'New Address Details' : 'Delivery Address Details' }}
+                                </h3>
                                 
-                                <!-- Selected Destination Display -->
-                                <div id="selected-destination" class="hidden p-4 bg-green-50 border border-green-200 rounded-md">
+                                <!-- Address Label with Radio Buttons -->
+                                <div class="mb-6">
+                                    <label class="block text-sm font-medium text-gray-700 mb-3">
+                                        Address Label *
+                                    </label>
+                                    <div class="flex space-x-4">
+                                        <label class="flex items-center p-4 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                                            <input type="radio" 
+                                                   name="address_label" 
+                                                   value="Kantor" 
+                                                   class="sr-only" 
+                                                   {{ old('address_label') == 'Kantor' ? 'checked' : '' }}
+                                                   onchange="updateAddressLabelStyles()">
+                                            <div class="radio-custom mr-3"></div>
+                                            <span class="text-sm font-medium text-gray-700">Kantor</span>
+                                        </label>
+                                        
+                                        <label class="flex items-center p-4 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                                            <input type="radio" 
+                                                   name="address_label" 
+                                                   value="Rumah" 
+                                                   class="sr-only" 
+                                                   {{ old('address_label', 'Rumah') == 'Rumah' ? 'checked' : '' }}
+                                                   onchange="updateAddressLabelStyles()">
+                                            <div class="radio-custom mr-3"></div>
+                                            <span class="text-sm font-medium text-gray-700">Rumah</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Recipient Name -->
+                                <div class="mb-4">
+                                    <label for="recipient_name" class="block text-sm font-medium text-gray-700 mb-2">
+                                        Recipient Name *
+                                    </label>
+                                    <input type="text" name="recipient_name" id="recipient_name" required
+                                           value="{{ old('recipient_name', $authenticatedUserName) }}"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                                </div>
+
+                                <!-- Phone Recipient -->
+                                <div class="mb-4">
+                                    <label for="phone_recipient" class="block text-sm font-medium text-gray-700 mb-2">
+                                        Recipient Phone Number *
+                                    </label>
+                                    <input type="tel" name="phone_recipient" id="phone_recipient" required
+                                           value="{{ old('phone_recipient', $authenticatedUserPhone) }}"
+                                           placeholder="08xxxxxxxxxx"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                                    <p class="text-xs text-gray-500 mt-1">Phone number for the recipient (can be different from your account phone)</p>
+                                </div>
+
+                                <!-- Location Search -->
+                                <div class="mb-4">
+                                    <label for="location_search" class="block text-sm font-medium text-gray-700 mb-2">
+                                        Search Location *
+                                        <span class="text-xs text-gray-500">(Province, City, Subdistrict, Postal Code)</span>
+                                    </label>
+                                    <div class="relative">
+                                        <input type="text" id="location_search" 
+                                               placeholder="e.g., kebayoran lama, jakarta selatan"
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                                               autocomplete="off">
+                                        
+                                        <!-- Search Results -->
+                                        <div id="location-results" class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                            <!-- Results will be populated here -->
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Selected Location Display -->
+                                <div id="selected-location" class="hidden mb-4 p-4 bg-green-50 border border-green-200 rounded-md">
                                     <div class="flex justify-between items-start">
                                         <div>
                                             <h4 class="font-medium text-green-800">Selected Location:</h4>
-                                            <p id="selected-destination-text" class="text-sm text-green-700"></p>
+                                            <p id="selected-location-text" class="text-sm text-green-700"></p>
                                         </div>
-                                        <button type="button" onclick="clearDestination()" class="text-red-600 hover:text-red-800 text-sm">
+                                        <button type="button" onclick="clearLocation()" class="text-red-600 hover:text-red-800 text-sm">
                                             Change
                                         </button>
                                     </div>
                                 </div>
-                                
-                                <!-- Hidden fields for destination -->
-                                <input type="hidden" name="destination_id" id="destination_id" required>
-                                <input type="hidden" name="destination_label" id="destination_label" required>
-                                
-                                <!-- Postal Code -->
-                                <div>
-                                    <label for="postal_code" class="block text-sm font-medium text-gray-700 mb-2">Postal Code *</label>
-                                    <input type="text" name="postal_code" id="postal_code" required
-                                           value="{{ old('postal_code') }}"
-                                           placeholder="e.g., 12310"
-                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
+
+                                <!-- Hidden Location Fields -->
+                                <input type="hidden" name="province_name" id="province_name" required>
+                                <input type="hidden" name="city_name" id="city_name" required>
+                                <input type="hidden" name="subdistrict_name" id="subdistrict_name" required>
+                                <input type="hidden" name="postal_code" id="postal_code" required>
+                                <input type="hidden" name="destination_id" id="destination_id">
+
+                                <!-- Street Address -->
+                                <div class="mb-4">
+                                    <label for="street_address" class="block text-sm font-medium text-gray-700 mb-2">
+                                        Street Address *
+                                        <span class="text-xs text-gray-500">(Street Name, Building, House Number)</span>
+                                    </label>
+                                    <textarea name="street_address" id="street_address" rows="3" required
+                                              placeholder="Enter complete street address, building name, house number"
+                                              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500">{{ old('street_address') }}</textarea>
                                 </div>
+
+                                @if(Auth::check())
+                                    <!-- Save Address Option -->
+                                    <div class="mb-4">
+                                        <label class="flex items-center">
+                                            <input type="checkbox" name="save_address" value="1" 
+                                                   class="mr-3 h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded" 
+                                                   {{ old('save_address', 'checked') ? 'checked' : '' }}>
+                                            <span class="text-sm font-medium">Save this address to my account</span>
+                                        </label>
+                                        <p class="text-xs text-gray-500 mt-1">You can use this address for future orders</p>
+                                    </div>
+
+                                    <!-- Set as Primary Option -->
+                                    <div class="mb-4">
+                                        <label class="flex items-center">
+                                            <input type="checkbox" name="set_as_primary" value="1" 
+                                                   class="mr-3 h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded" 
+                                                   {{ old('set_as_primary') ? 'checked' : '' }}>
+                                            <span class="text-sm font-medium">Set as primary address</span>
+                                        </label>
+                                        <p class="text-xs text-gray-500 mt-1">Primary address will be used as default for future checkouts</p>
+                                    </div>
+                                @endif
                             </div>
+                            
+                            <!-- Keep legacy fields for backward compatibility -->
+                            <input type="hidden" name="address" id="legacy_address">
+                            <input type="hidden" name="destination_label" id="legacy_destination_label">
                             
                             <div class="flex space-x-4 mt-8">
                                 <button type="button" onclick="prevStep(1)" 
@@ -276,7 +445,7 @@
                                     Previous
                                 </button>
                                 <button type="button" onclick="nextStep(3)" id="continue-step-2"
-                                        class="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                                        class="flex-1 bg-orange-600 text-white py-3 rounded-lg hover:bg-orange-700 transition-colors font-medium">
                                     Continue
                                 </button>
                             </div>
@@ -337,16 +506,6 @@
                                         </div>
                                     </div>
                                 </label>
-                                
-                                <!-- COD Option -->
-                                <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
-                                    <input type="radio" name="payment_method" value="cod" class="mr-4">
-                                    <div class="flex-1">
-                                        <div class="font-medium">Cash on Delivery (COD)</div>
-                                        <div class="text-sm text-gray-600">Pay when the order is delivered to your address</div>
-                                        <div class="text-xs text-orange-600 mt-1">⚠️ Additional COD fee may apply</div>
-                                    </div>
-                                </label>
                             </div>
                             
                             <!-- Payment Info -->
@@ -380,7 +539,6 @@
                                         class="flex-1 bg-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-400 transition-colors font-medium">
                                     Previous
                                 </button>
-                                <!-- FIXED: Submit button yang benar -->
                                 <button type="submit" id="place-order-btn" 
                                         class="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium">
                                     Continue to Payment
@@ -390,51 +548,210 @@
                     </div>
                 </div>
 
-                <!-- Right Column: Order Summary -->
+                <!-- Right Column: Order Summary - NO TAX VERSION + VOUCHER SUPPORT -->
                 <div class="lg:col-span-1">
                     <div class="bg-white rounded-lg shadow-md p-6 sticky top-8">
                         <h3 class="text-lg font-semibold text-gray-900 mb-4">Order Summary</h3>
                         
-                        <!-- Cart Items -->
-                        @if(isset($cartItems) && $cartItems->count() > 0)
-                            <div class="space-y-3 mb-4">
+                        <!-- Cart Items Display - FIXED: Show actual cart items -->
+                        <div class="space-y-3 mb-4">
+                            @if(isset($cartItems) && $cartItems->count() > 0)
                                 @foreach($cartItems as $item)
-                                    <div class="flex items-center space-x-3">
-                                        <div class="w-12 h-12 bg-gray-200 rounded overflow-hidden">
-                                            @if($item['image'])
-                                                <img src="{{ asset('storage/' . $item['image']) }}" alt="{{ $item['name'] }}" class="w-full h-full object-cover">
+                                    @php
+                                        // Clean product name display
+                                        $originalName = $item['name'] ?? 'Unknown Product';
+                                        $skuParent = $item['sku_parent'] ?? '';
+                                        
+                                        $cleanProductName = $originalName;
+                                        if (!empty($skuParent)) {
+                                            $cleanProductName = preg_replace('/\s*-\s*' . preg_quote($skuParent, '/') . '\s*/', '', $cleanProductName);
+                                            $cleanProductName = preg_replace('/\s*' . preg_quote($skuParent, '/') . '\s*/', '', $cleanProductName);
+                                        }
+                                        
+                                        // Remove size patterns
+                                        $cleanProductName = preg_replace('/\s*-\s*Size\s+[A-Z0-9.]+\s*$/i', '', $cleanProductName);
+                                        $cleanProductName = preg_replace('/\s*Size\s+[A-Z0-9.]+\s*$/i', '', $cleanProductName);
+                                        $cleanProductName = preg_replace('/\s*-\s*(XS|S|M|L|XL|XXL|XXXL|[0-9]+|[0-9]+\.[0-9]+)\s*$/i', '', $cleanProductName);
+                                        
+                                        $cleanProductName = trim($cleanProductName, ' -');
+                                        
+                                        // Size information
+                                        $itemSize = 'One Size';
+                                        if (isset($item['size']) && !empty($item['size'])) {
+                                            if (is_array($item['size'])) {
+                                                $itemSize = $item['size'][0] ?? 'One Size';
+                                            } else {
+                                                $itemSize = (string) $item['size'];
+                                            }
+                                        } elseif (isset($item['product_options']['size'])) {
+                                            $itemSize = $item['product_options']['size'] ?? 'One Size';
+                                        }
+                                        
+                                        $hasValidSize = !empty($itemSize) && 
+                                                      $itemSize !== 'One Size' && 
+                                                      $itemSize !== 'Default' &&
+                                                      !is_array($itemSize);
+
+                                        // Image URL with proper fallback
+                                        $imageUrl = asset('images/default-product.jpg');
+                                        if (!empty($item['image'])) {
+                                            $imagePath = $item['image'];
+                                            if (filter_var($imagePath, FILTER_VALIDATE_URL)) {
+                                                $imageUrl = $imagePath;
+                                            } elseif (str_starts_with($imagePath, '/storage/')) {
+                                                $imageUrl = config('app.url') . $imagePath;
+                                            } elseif (str_starts_with($imagePath, 'products/')) {
+                                                $imageUrl = config('app.url') . '/storage/' . $imagePath;
+                                            } elseif (str_starts_with($imagePath, 'assets/') || str_starts_with($imagePath, 'images/')) {
+                                                $imageUrl = asset($imagePath);
+                                            } else {
+                                                $imageUrl = config('app.url') . '/storage/products/' . $imagePath;
+                                            }
+                                        }
+                                    @endphp
+                                    
+                                    <div class="flex items-center space-x-3 order-summary-item" 
+                                         data-name="{{ $cleanProductName }}"
+                                         data-quantity="{{ $item['quantity'] ?? 1 }}"
+                                         data-price="{{ $item['price'] ?? 0 }}"
+                                         data-subtotal="{{ $item['subtotal'] ?? 0 }}"
+                                         data-size="{{ $hasValidSize ? $itemSize : '' }}"
+                                         data-image="{{ $imageUrl }}">
+                                        <img src="{{ $imageUrl }}" 
+                                             alt="{{ $cleanProductName }}" 
+                                             class="w-12 h-12 object-cover rounded"
+                                             onerror="this.src='{{ asset('images/default-product.jpg') }}'">
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm font-medium text-gray-900 truncate">{{ $cleanProductName }}</p>
+                                            @if($hasValidSize)
+                                                <p class="text-xs text-gray-500">Size: {{ $itemSize }}</p>
                                             @endif
+                                            <p class="text-sm text-gray-500">Qty: {{ $item['quantity'] ?? 1 }}</p>
                                         </div>
-                                        <div class="flex-1">
-                                            <p class="text-sm font-medium">{{ $item['name'] }}</p>
-                                            <p class="text-xs text-gray-500">Qty: {{ $item['quantity'] }}</p>
-                                        </div>
-                                        <p class="text-sm font-medium">Rp {{ number_format($item['subtotal'], 0, ',', '.') }}</p>
+                                        <span class="text-sm font-medium text-gray-900">
+                                            Rp {{ number_format($item['subtotal'] ?? 0, 0, ',', '.') }}
+                                        </span>
                                     </div>
                                 @endforeach
+                            @else
+                                <div class="p-4 text-center text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
+                                    <p>No items in cart</p>
+                                </div>
+                            @endif
+                        </div>
+                        
+                        <!-- VOUCHER/COUPON SECTION - NEW -->
+                        <div class="border-t border-gray-200 pt-4 mb-4">
+                            <h4 class="text-sm font-medium text-gray-900 mb-3">🎫 Promo Code / Voucher</h4>
+                            
+                            <!-- Coupon Message Container -->
+                            <div id="coupon-message-container" class="hidden"></div>
+                            
+                            <!-- Applied Coupon Display -->
+                            <div id="applied-coupon-container" class="hidden mb-4"></div>
+                            
+                            <!-- Coupon Input Section -->
+                            <div id="coupon-input-section" class="mb-4">
+                                <div class="flex space-x-2">
+                                    <input type="text" 
+                                           id="coupon-code" 
+                                           placeholder="Enter coupon code"
+                                           class="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                           maxlength="50">
+                                    <button type="button" 
+                                            id="apply-coupon-btn"
+                                            class="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors font-medium">
+                                        Apply
+                                    </button>
+                                </div>
+                                <div id="coupon-validation-message" class="hidden"></div>
+                            </div>
+                            
+                            <!-- Available Coupons Display -->
+                            <div id="available-coupons-container" class="hidden"></div>
+                        </div>
+                        
+                        <!-- Order Totals - NO TAX VERSION + VOUCHER SUPPORT -->
+                        <div class="border-t border-gray-200 pt-4 space-y-2">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-gray-600">Subtotal</span>
+                                <span class="text-gray-900" data-subtotal-display>
+                                    Rp {{ number_format($subtotal ?? 0, 0, ',', '.') }}
+                                </span>
+                            </div>
+                            
+                            <!-- Discount Row - NEW -->
+                            <div class="discount-row flex justify-between text-sm {{ ($discountAmount ?? 0) > 0 ? '' : 'hidden' }}">
+                                <span class="text-gray-600">Discount 
+                                    @if($appliedCoupon ?? false)
+                                        <span class="text-xs text-green-600">({{ $appliedCoupon['code'] }})</span>
+                                    @endif
+                                </span>
+                                <span class="text-green-600 font-medium" data-discount-display>
+                                    -Rp {{ number_format($discountAmount ?? 0, 0, ',', '.') }}
+                                </span>
+                            </div>
+                            
+                            <div class="flex justify-between text-sm">
+                                <span class="text-gray-600">Shipping</span>
+                                <span class="text-gray-900" id="shipping-cost-display" data-shipping-display>
+                                    To be calculated
+                                </span>
+                            </div>
+                            
+                            <!-- REMOVED TAX DISPLAY COMPLETELY -->
+                            <div class="border-t border-gray-200 pt-2">
+                                <div class="flex justify-between text-base font-medium">
+                                    <span class="text-gray-900">Total</span>
+                                    <span class="text-gray-900" id="total-display" data-total-display>
+                                        Rp {{ number_format(($subtotal ?? 0) - ($discountAmount ?? 0), 0, ',', '.') }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Order Info - Additional helpful info -->
+                        @if(isset($cartItems) && $cartItems->count() > 0)
+                            <div class="mt-4 pt-4 border-t border-gray-200">
+                                <div class="flex justify-between text-xs text-gray-500 mb-2">
+                                    <span>Total Items:</span>
+                                    <span>{{ $cartItems->count() }} product(s)</span>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-500 mb-2">
+                                    <span>Total Quantity:</span>
+                                    <span>{{ $cartItems->sum('quantity') }} pcs</span>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-500">
+                                    <span>Estimated Weight:</span>
+                                    <span>{{ number_format($totalWeight ?? 1000) }}g</span>
+                                </div>
                             </div>
                         @endif
-                        
-                        <hr class="my-4">
-                        
-                        <!-- Order Totals -->
-                        <div class="space-y-2">
-                            <div class="flex justify-between">
-                                <span class="text-sm">Subtotal</span>
-                                <span class="text-sm">Rp {{ number_format($subtotal ?? 0, 0, ',', '.') }}</span>
+
+                        <!-- Voucher Benefits Info -->
+                        @if($appliedCoupon ?? false)
+                            <div class="mt-4 pt-4 border-t border-gray-200">
+                                <div class="bg-green-50 p-3 rounded-lg">
+                                    <div class="flex items-center text-green-800 text-sm">
+                                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                        <strong>{{ $appliedCoupon['code'] }} Applied!</strong>
+                                    </div>
+                                    <p class="text-xs text-green-700 mt-1">{{ $appliedCoupon['summary'] ?? 'Discount applied to your order' }}</p>
+                                    <p class="text-xs text-green-600 mt-1 font-medium">You saved: Rp {{ number_format($discountAmount ?? 0, 0, ',', '.') }}</p>
+                                </div>
                             </div>
-                            <div class="flex justify-between">
-                                <span class="text-sm">Shipping</span>
-                                <span class="text-sm" id="shipping-display">Rp 0</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-sm">Tax (PPN 11%)</span>
-                                <span class="text-sm" id="tax-display">Rp {{ number_format(($subtotal ?? 0) * 0.11, 0, ',', '.') }}</span>
-                            </div>
-                            <hr class="my-2">
-                            <div class="flex justify-between text-lg font-semibold">
-                                <span>Total</span>
-                                <span id="total-display">Rp {{ number_format(($subtotal ?? 0) * 1.11, 0, ',', '.') }}</span>
+                        @endif
+
+                        <!-- Security Info -->
+                        <div class="mt-4 pt-4 border-t border-gray-200">
+                            <div class="flex items-center justify-center text-xs text-gray-500">
+                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                                </svg>
+                                Secure checkout
                             </div>
                         </div>
                     </div>
@@ -444,7 +761,50 @@
     </div>
 </div>
 
+<!-- Custom Radio Button Styles -->
 <style>
+.radio-custom {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #d1d5db;
+    border-radius: 50%;
+    position: relative;
+    background: white;
+    transition: all 0.2s ease;
+}
+
+.radio-custom::after {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ea580c;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    transition: transform 0.2s ease;
+}
+
+input[type="radio"]:checked + .radio-custom {
+    border-color: #ea580c;
+}
+
+input[type="radio"]:checked + .radio-custom::after {
+    transform: translate(-50%, -50%) scale(1);
+}
+
+label:has(input[name="address_label"]:checked) {
+    border-color: #ea580c !important;
+    background-color: #fff7ed !important;
+}
+
+/* Saved Address Selection Styles */
+label:has(input[name="saved_address_id"]:checked) {
+    border-color: #ea580c !important;
+    background-color: #fff7ed !important;
+}
+
 .step {
     flex: 1;
     text-align: center;
@@ -498,18 +858,18 @@
     display: block !important;
 }
 
-#search-results .search-result-item {
+#location-results .search-result-item {
     padding: 12px;
     cursor: pointer;
     border-bottom: 1px solid #e5e7eb;
     transition: background-color 0.2s ease;
 }
 
-#search-results .search-result-item:hover {
+#location-results .search-result-item:hover {
     background-color: #f3f4f6;
 }
 
-#search-results .search-result-item:last-child {
+#location-results .search-result-item:last-child {
     border-bottom: none;
 }
 
@@ -528,7 +888,84 @@
 }
 </style>
 
-<!-- FIXED: Load the JavaScript file -->
-<script src="{{ asset('js/simple-checkout.js') }}"></script>
-<script src="{{ asset('js/debug-checkout.js') }}"></script>
+<!-- Script to ensure Order Summary updates properly WITHOUT TAX + VOUCHER SUPPORT -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Log Order Summary initialization
+    console.log('📊 Order Summary DOM elements loaded - NO TAX VERSION + VOUCHER SUPPORT');
+    
+    // Get initial values from server-side data
+    const initialSubtotal = {{ $subtotal ?? 0 }};
+    const initialWeight = {{ $totalWeight ?? 1000 }};
+    const cartItemsCount = {{ isset($cartItems) ? $cartItems->count() : 0 }};
+    const initialDiscount = {{ $discountAmount ?? 0 }};
+    
+    console.log('📊 Initial Order Summary data (NO TAX + VOUCHER):', {
+        subtotal: initialSubtotal,
+        weight: initialWeight,
+        itemsCount: cartItemsCount,
+        discount: initialDiscount,
+        taxRemoved: true,
+        voucherSupport: true
+    });
+    
+    // Store in meta tags for JavaScript access
+    if (!document.querySelector('meta[name="cart-subtotal"]')) {
+        const subtotalMeta = document.createElement('meta');
+        subtotalMeta.name = 'cart-subtotal';
+        subtotalMeta.content = initialSubtotal;
+        document.head.appendChild(subtotalMeta);
+    }
+    
+    if (!document.querySelector('meta[name="total-weight"]')) {
+        const weightMeta = document.createElement('meta');
+        weightMeta.name = 'total-weight';
+        weightMeta.content = initialWeight;
+        document.head.appendChild(weightMeta);
+    }
+    
+    // Add discount meta tag for voucher support
+    if (!document.querySelector('meta[name="discount-amount"]')) {
+        const discountMeta = document.createElement('meta');
+        discountMeta.name = 'discount-amount';
+        discountMeta.content = initialDiscount;
+        document.head.appendChild(discountMeta);
+    }
+    
+    // Validate that totals are showing correctly
+    const subtotalElements = document.querySelectorAll('[data-subtotal-display]');
+    const totalElements = document.querySelectorAll('[data-total-display]');
+    const discountElements = document.querySelectorAll('[data-discount-display]');
+    
+    if (subtotalElements.length === 0) {
+        console.warn('⚠️ No subtotal display elements found');
+    }
+    
+    if (totalElements.length === 0) {
+        console.warn('⚠️ No total display elements found');
+    }
+    
+    console.log('🎫 Discount elements found:', discountElements.length);
+    
+    // Check if cart items are displayed
+    const orderSummaryItems = document.querySelectorAll('.order-summary-item');
+    console.log('📦 Order Summary items found:', orderSummaryItems.length);
+    
+    if (orderSummaryItems.length !== cartItemsCount) {
+        console.warn('⚠️ Mismatch between cart items count and displayed items:', {
+            expected: cartItemsCount,
+            displayed: orderSummaryItems.length
+        });
+    }
+    
+    // CRITICAL: Log that tax has been completely removed and voucher support added
+    console.log('✅ TAX COMPLETELY REMOVED from checkout system');
+    console.log('✅ VOUCHER/COUPON SUPPORT ADDED to checkout system');
+});
+</script>
+
+<!-- Load the NO TAX JavaScript file -->
+<script src="{{ asset('js/enhanced-checkout.js') }}"></script>
+
+<script src="{{ asset('js/voucher.js') }}"></script>
 @endsection

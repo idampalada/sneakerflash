@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\User;
+use App\Models\UserAddress;
 use App\Services\MidtransService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -28,11 +29,11 @@ class CheckoutController extends Controller
     {
         $this->midtransService = $midtransService;
         
-        // RajaOngkir API V2 via Komerce - Fixed Format
+        // RajaOngkir API V2 via Komerce
         $this->rajaOngkirApiKey = config('services.rajaongkir.api_key') ?: env('RAJAONGKIR_API_KEY');
         $this->rajaOngkirBaseUrl = 'https://rajaongkir.komerce.id/api/v1';
         
-        Log::info('RajaOngkir V2 Controller initialized (Fixed Format)', [
+        Log::info('RajaOngkir V2 Controller initialized with Address Integration', [
             'base_url' => $this->rajaOngkirBaseUrl,
             'api_key_set' => !empty($this->rajaOngkirApiKey),
             'origin_city' => env('STORE_ORIGIN_CITY_NAME', 'Not configured'),
@@ -41,6 +42,9 @@ class CheckoutController extends Controller
         ]);
     }
 
+    /**
+     * Index method with proper cart item handling and coupon info
+     */
     public function index()
     {
         // Get cart from session
@@ -50,41 +54,195 @@ class CheckoutController extends Controller
             return redirect()->route('cart.index')->with('error', 'Your cart is empty.');
         }
 
-        // Get cart items and calculate weight
+        // Get cart items using the same method as CartController
         $cartItems = $this->getCartItems($cart);
+        
+        // Calculate subtotal correctly
         $subtotal = $cartItems->sum('subtotal');
+        
+        // Calculate total weight
         $totalWeight = $this->calculateTotalWeight($cartItems);
 
-        // Get provinces from RajaOngkir API V2 (Fixed Format)
+        // Get provinces from RajaOngkir API V2
         $provinces = $this->getProvinces();
-
-        // Get major cities for quick selection
         $majorCities = $this->getMajorCities();
 
-        Log::info('Checkout initialized with RajaOngkir V2 (Fixed Format)', [
+        // Get user addresses if authenticated
+        $userAddresses = collect();
+        $primaryAddress = null;
+        $primaryAddressId = null;
+        $userHasPrimaryAddress = false;
+        $authenticatedUserName = '';
+        $authenticatedUserPhone = '';
+        $authenticatedUserEmail = '';
+        
+        if (Auth::check()) {
+            $user = Auth::user();
+            
+            $userAddresses = UserAddress::where('user_id', $user->id)
+                                ->where('is_active', true)
+                                ->orderBy('is_primary', 'desc')
+                                ->orderBy('created_at', 'desc')
+                                ->get();
+            
+            $primaryAddress = UserAddress::where('user_id', $user->id)
+                                ->where('is_primary', true)
+                                ->where('is_active', true)
+                                ->first();
+            
+            if ($primaryAddress) {
+                $primaryAddressId = $primaryAddress->id;
+                $userHasPrimaryAddress = true;
+            }
+            
+            $authenticatedUserName = $user->name ?? '';
+            $authenticatedUserPhone = $user->phone ?? '';
+            $authenticatedUserEmail = $user->email ?? '';
+        }
+
+        // SIMPLE COUPON INFO - Check if there's a coupon in session
+        $appliedCoupon = Session::get('applied_coupon', null);
+        $discountAmount = 0;
+        
+        if ($appliedCoupon && isset($appliedCoupon['discount_amount'])) {
+            $discountAmount = (float) $appliedCoupon['discount_amount'];
+        }
+
+        Log::info('Checkout initialized with Address Integration and Simple Coupon - NO TAX', [
             'cart_count' => count($cart),
             'cart_items_count' => $cartItems->count(),
             'subtotal' => $subtotal,
+            'discount_amount' => $discountAmount,
             'total_weight' => $totalWeight,
             'provinces_count' => count($provinces),
             'major_cities_count' => count($majorCities),
-            'store_origin' => env('STORE_ORIGIN_CITY_NAME', 'Not configured')
+            'store_origin' => env('STORE_ORIGIN_CITY_NAME', 'Not configured'),
+            'user_authenticated' => Auth::check(),
+            'user_addresses_count' => $userAddresses->count(),
+            'has_primary_address' => $userHasPrimaryAddress,
+            'primary_address_id' => $primaryAddressId,
+            'user_email' => $authenticatedUserEmail,
+            'tax_removed' => true,
+            'applied_coupon' => $appliedCoupon ? $appliedCoupon['code'] : null
         ]);
 
-        return view('frontend.checkout.index', compact('cartItems', 'subtotal', 'provinces', 'majorCities', 'totalWeight'));
+        return view('frontend.checkout.index', compact(
+            'cartItems', 
+            'subtotal', 
+            'provinces', 
+            'majorCities', 
+            'totalWeight',
+            'userAddresses',
+            'primaryAddress',
+            'primaryAddressId',
+            'userHasPrimaryAddress',
+            'authenticatedUserName',
+            'authenticatedUserPhone',
+            'authenticatedUserEmail',
+            'appliedCoupon',
+            'discountAmount'
+        ));
     }
 
+    // Keep all existing methods exactly the same until store method
+    private function getCartItems($cart)
+    {
+        $cartItems = collect();
+        
+        foreach ($cart as $cartKey => $details) {
+            $productId = $details['product_id'] ?? $details['id'] ?? null;
+            $product = null;
+            
+            if ($productId) {
+                $product = Product::find($productId);
+            }
+            
+            $currentStock = $product ? ($product->stock_quantity ?? 0) : 0;
+            
+            if (!$product || !$product->is_active) {
+                continue;
+            }
+            
+            $itemName = $details['name'] ?? ($product->name ?? 'Unknown Product');
+            $itemPrice = $details['price'] ?? ($product->sale_price ?: ($product->price ?? 0));
+            $itemOriginalPrice = $details['original_price'] ?? ($product->price ?? 0);
+            $itemQuantity = min($details['quantity'] ?? 1, $currentStock);
+            $itemImage = $details['image'] ?? ($product->images[0] ?? '/images/default-product.jpg');
+            $itemSlug = $details['slug'] ?? ($product->slug ?? '');
+            $itemBrand = $details['brand'] ?? ($product->brand ?? 'Unknown Brand');
+            $itemCategory = $details['category'] ?? ($product->category->name ?? 'Unknown Category');
+            $itemSku = $details['sku'] ?? ($product->sku ?? '');
+            $itemSkuParent = $details['sku_parent'] ?? ($product->sku_parent ?? '');
+            
+            $itemSize = 'One Size';
+            if (isset($details['size']) && !empty($details['size'])) {
+                if (is_array($details['size'])) {
+                    $itemSize = $details['size'][0] ?? 'One Size';
+                } else {
+                    $itemSize = (string) $details['size'];
+                }
+            } elseif (isset($details['product_options']['size'])) {
+                $itemSize = $details['product_options']['size'] ?? 'One Size';
+            } elseif ($product && !empty($product->available_sizes)) {
+                if (is_array($product->available_sizes)) {
+                    $itemSize = $product->available_sizes[0] ?? 'One Size';
+                } else {
+                    $itemSize = (string) $product->available_sizes;
+                }
+            }
+            
+            $productOptions = $details['product_options'] ?? [];
+            if (!is_array($productOptions)) {
+                $productOptions = [
+                    'size' => $itemSize,
+                    'color' => $details['color'] ?? 'Default'
+                ];
+            }
+            
+            $cartItems->push([
+                'cart_key' => $cartKey,
+                'id' => $productId,
+                'name' => $itemName,
+                'price' => $itemPrice,
+                'original_price' => $itemOriginalPrice,
+                'quantity' => $itemQuantity,
+                'image' => $itemImage,
+                'slug' => $itemSlug,
+                'brand' => $itemBrand,
+                'category' => $itemCategory,
+                'stock' => $currentStock,
+                'sku' => $itemSku,
+                'sku_parent' => $itemSkuParent,
+                'size' => $itemSize,
+                'color' => $details['color'] ?? 'Default',
+                'weight' => $details['weight'] ?? ($product->weight ?? 500),
+                'product_options' => $productOptions,
+                'subtotal' => $itemPrice * $itemQuantity
+            ]);
+        }
+        
+        return $cartItems;
+    }
 
-    /**
-     * Search destinations - Main method for location selection
-     * Enhanced error handling for API issues
-     */
+    private function calculateTotalWeight($cartItems)
+    {
+        $totalWeight = 0;
+        
+        foreach ($cartItems as $item) {
+            $itemWeight = $item['weight'] ?? 500;
+            $totalWeight += $itemWeight * $item['quantity'];
+        }
+        
+        return max($totalWeight, 1000);
+    }
+
+    // Keep all location and shipping methods exactly the same...
     public function searchDestinations(Request $request)
     {
         $search = $request->get('search');
         $limit = $request->get('limit', 10);
         
-        Log::info('Searching destinations via RajaOngkir V2 (Fixed)', ['search' => $search]);
+        Log::info('Searching destinations via RajaOngkir V2', ['search' => $search]);
         
         if (!$search || strlen($search) < 2) {
             return response()->json(['error' => 'Search term must be at least 2 characters'], 400);
@@ -126,7 +284,6 @@ class CheckoutController extends Controller
                     ]);
                 }
             } else {
-                // API error - return mock data based on search term
                 Log::warning('API search failed, returning mock data', [
                     'status' => $response->status(),
                     'search' => $search
@@ -139,20 +296,871 @@ class CheckoutController extends Controller
 
         } catch (\Exception $e) {
             Log::error('RajaOngkir V2 search error: ' . $e->getMessage());
-            
-            // Return mock data on API failure
             return $this->getMockDestinations($search);
         }
     }
 
+    public function calculateShipping(Request $request)
+    {
+        $destinationId = $request->get('destination_id');
+        $destinationLabel = $request->get('destination_label', '');
+        $weight = $request->get('weight', 1000);
+
+        Log::info('Calculating JNE shipping via RajaOngkir V2', [
+            'destination_id' => $destinationId,
+            'destination_label' => $destinationLabel,
+            'weight' => $weight,
+            'store_origin_city' => env('STORE_ORIGIN_CITY_NAME', 'Not configured'),
+            'courier' => 'JNE only'
+        ]);
+
+        if (!$destinationId) {
+            return response()->json(['error' => 'Destination ID is required'], 400);
+        }
+
+        try {
+            $originId = $this->getOriginIdFromEnv();
+            
+            Log::info('Using origin configuration for JNE shipping', [
+                'origin_id' => $originId,
+                'origin_city_name' => env('STORE_ORIGIN_CITY_NAME'),
+                'origin_city_id_fallback' => env('STORE_ORIGIN_CITY_ID'),
+                'courier' => 'JNE only'
+            ]);
+
+            $shippingOptions = $this->calculateRealShipping($originId, $destinationId, $weight);
+            
+            if (empty($shippingOptions)) {
+                Log::info('No real JNE shipping options found, using mock JNE data');
+                $shippingOptions = $this->getMockShippingOptions($weight, $destinationLabel);
+            }
+
+            if (!empty($shippingOptions)) {
+                $shippingOptions = $this->autoSortShippingOptions($shippingOptions);
+                
+                Log::info('Successfully calculated ' . count($shippingOptions) . ' JNE shipping options');
+                
+                return response()->json([
+                    'success' => true,
+                    'total_options' => count($shippingOptions),
+                    'origin_id' => $originId,
+                    'origin_city_name' => env('STORE_ORIGIN_CITY_NAME'),
+                    'destination_id' => $destinationId,
+                    'destination_label' => $destinationLabel,
+                    'weight' => $weight,
+                    'courier' => 'JNE only',
+                    'api_version' => 'v2_jne_only_with_address_integration',
+                    'options' => $shippingOptions
+                ]);
+            } else {
+                Log::warning('No JNE shipping options available');
+                return response()->json(['error' => 'No JNE shipping options available for this route'], 404);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('JNE shipping calculation error: ' . $e->getMessage());
+            
+            $mockOptions = $this->getMockShippingOptions($weight, $destinationLabel);
+            
+            return response()->json([
+                'success' => true,
+                'total_options' => count($mockOptions),
+                'origin_id' => $this->getOriginIdFromEnv(),
+                'origin_city_name' => env('STORE_ORIGIN_CITY_NAME'),
+                'destination_id' => $destinationId,
+                'destination_label' => $destinationLabel,
+                'weight' => $weight,
+                'courier' => 'JNE only',
+                'api_version' => 'v2_jne_only_emergency_fallback',
+                'options' => $mockOptions,
+                'note' => 'Using fallback JNE shipping options due to API error'
+            ]);
+        }
+    }
+
     /**
-     * Generate mock destination data when API is not available
+     * CRITICAL FIX: Store method with SIMPLE coupon integration that works
      */
+    public function store(Request $request)
+    {
+        Log::info('Checkout request received with address integration and simple coupon - NO TAX', [
+            'payment_method' => $request->payment_method,
+            'is_ajax' => $request->ajax(),
+            'has_saved_address' => $request->has('saved_address_id'),
+            'saved_address_id' => $request->get('saved_address_id'),
+            'applied_coupon_code' => $request->get('applied_coupon_code'),
+            'applied_coupon_discount' => $request->get('applied_coupon_discount')
+        ]);
+
+        // Validation with address fields and simple coupon data
+        $request->validate([
+            'gender' => 'nullable|in:mens,womens,kids',
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'email' => 'required|email|max:255',
+            'phone' => 'required|string|max:20',
+            'birthdate' => 'nullable|date|before:today',
+            
+            'saved_address_id' => 'nullable|string',
+            'address_label' => 'required_without:saved_address_id|nullable|in:Kantor,Rumah',
+            'recipient_name' => 'required|string|max:255',
+            'phone_recipient' => 'required|string|max:20|regex:/^[0-9+\-\s\(\)]{10,}$/',
+            'province_name' => 'required|string|max:100',
+            'city_name' => 'required|string|max:100',
+            'subdistrict_name' => 'required|string|max:100',
+            'postal_code' => 'required|string|size:5|regex:/^[0-9]{5}$/',
+            'destination_id' => 'nullable|string|max:50',
+            'street_address' => 'required|string|min:10|max:500',
+            
+            'address' => 'nullable|string|max:500',
+            'destination_label' => 'nullable|string',
+            
+            'shipping_method' => 'required|string',
+            'shipping_cost' => 'required|numeric|min:0',
+            
+            'payment_method' => 'required|in:bank_transfer,credit_card,ewallet',
+            
+            'create_account' => 'nullable|boolean',
+            'password' => 'required_if:create_account,1|nullable|string|min:8',
+            'password_confirmation' => 'required_if:create_account,1|nullable|string|same:password',
+            'privacy_accepted' => 'required|boolean',
+            'newsletter_subscribe' => 'nullable|boolean',
+            
+            'save_address' => 'nullable|boolean',
+            'set_as_primary' => 'nullable|boolean',
+            
+            // SIMPLE coupon validation
+            'applied_coupon_code' => 'nullable|string|max:50',
+            'applied_coupon_discount' => 'nullable|numeric|min:0',
+        ], [
+            'privacy_accepted.required' => 'You must accept the privacy policy to continue.',
+            'destination_id.required' => 'Please select a delivery location.',
+            'shipping_method.required' => 'Please select a shipping method.',
+            'shipping_cost.required' => 'Shipping cost is required.',
+            'payment_method.required' => 'Please select a payment method.',
+            'payment_method.in' => 'Please select a valid online payment method.',
+        ]);
+        
+        if (!$request->has('privacy_accepted') || $request->privacy_accepted != '1') {
+            $errorMessage = 'You must accept the privacy policy to continue.';
+            
+            if ($request->ajax() || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => ['privacy_accepted' => [$errorMessage]]
+                ], 422);
+            }
+            
+            return back()->withInput()->withErrors(['privacy_accepted' => $errorMessage]);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $cart = Session::get('cart', []);
+            
+            if (empty($cart)) {
+                throw new \Exception('Cart is empty');
+            }
+
+            $cartItems = $this->getCartItems($cart);
+            
+            if ($cartItems->isEmpty()) {
+                throw new \Exception('No valid items in cart');
+            }
+
+            $subtotal = $cartItems->sum('subtotal');
+            $shippingCost = (float) $request->shipping_cost;
+            
+            // SIMPLE COUPON HANDLING - Get from request or session
+            $discountAmount = 0;
+            $couponInfo = null;
+
+            // Try from request first
+            if ($request->get('applied_coupon_code') && $request->get('applied_coupon_discount')) {
+                $discountAmount = (float) $request->get('applied_coupon_discount');
+                $couponInfo = [
+                    'code' => $request->get('applied_coupon_code'),
+                    'discount_amount' => $discountAmount,
+                    'source' => 'form_data'
+                ];
+                Log::info('🎫 Using coupon data from form submission', $couponInfo);
+            } 
+            // Fallback to session
+            else {
+                $sessionCoupon = Session::get('applied_coupon', null);
+                if ($sessionCoupon && isset($sessionCoupon['discount_amount'])) {
+                    $discountAmount = (float) $sessionCoupon['discount_amount'];
+                    $couponInfo = [
+                        'code' => $sessionCoupon['code'] ?? 'unknown',
+                        'discount_amount' => $discountAmount,
+                        'source' => 'session'
+                    ];
+                    Log::info('🎫 Using coupon data from session', $couponInfo);
+                }
+            }
+            
+            $tax = 0;
+            $totalAmount = $subtotal + $shippingCost - $discountAmount;
+            $totalAmount = max(0, $totalAmount);
+
+            Log::info('💰 Order totals calculated with simple coupon', [
+                'subtotal' => $subtotal,
+                'shipping_cost' => $shippingCost,
+                'discount_amount' => $discountAmount,
+                'total_amount' => $totalAmount,
+                'coupon_applied' => !empty($couponInfo),
+                'coupon_info' => $couponInfo
+            ]);
+
+            $user = $this->handleUserAccountCreationOrUpdate($request);
+            $addressData = $this->handleAddressData($request, $user);
+
+            do {
+                $orderNumber = 'SF-' . date('Ymd') . '-' . strtoupper(Str::random(6));
+            } while (Order::where('order_number', $orderNumber)->exists());
+
+            $orderData = [
+                'order_number' => $orderNumber,
+                'user_id' => $user ? $user->id : null,
+                'customer_name' => $request->first_name . ' ' . $request->last_name,
+                'customer_email' => $request->email,
+                'customer_phone' => $request->phone,
+                
+                'shipping_address' => $addressData['full_address'],
+                'billing_address' => $addressData['full_address'],
+                'shipping_destination_id' => $addressData['destination_id'] ?? $request->destination_id,
+                'shipping_destination_label' => $addressData['location_string'] ?? $request->destination_label,
+                'shipping_postal_code' => $addressData['postal_code'],
+                
+                'payment_method' => $request->payment_method,
+                'subtotal' => $subtotal,
+                'shipping_cost' => $shippingCost,
+                'tax_amount' => 0,
+                'discount_amount' => $discountAmount,
+                'total_amount' => $totalAmount,
+                'currency' => 'IDR',
+                
+                'status' => 'pending',
+                'store_origin' => env('STORE_ORIGIN_CITY_NAME', 'Jakarta'),
+                'notes' => trim(($request->notes ?? '') . "\n" . "Shipping: " . $request->shipping_method),
+                
+                'meta_data' => json_encode([
+                    'shipping_method' => $request->shipping_method,
+                    'shipping_method_detail' => $request->shipping_method,
+                    'destination_info' => [
+                        'id' => $addressData['destination_id'] ?? $request->destination_id,
+                        'label' => $addressData['location_string'] ?? $request->destination_label,
+                        'postal_code' => $addressData['postal_code'],
+                        'full_address' => $addressData['full_address']
+                    ],
+                    'address_info' => [
+                        'address_id' => $addressData['address_id'] ?? null,
+                        'label' => $addressData['label'],
+                        'recipient_name' => $addressData['recipient_name'],
+                        'phone_recipient' => $addressData['phone_recipient'],
+                        'province_name' => $addressData['province_name'],
+                        'city_name' => $addressData['city_name'],
+                        'subdistrict_name' => $addressData['subdistrict_name'],
+                        'street_address' => $addressData['street_address'],
+                        'saved_address_used' => !empty($request->saved_address_id) && $request->saved_address_id !== 'new',
+                        'address_saved' => ($user && ($request->save_address ?? false)) ? true : false,
+                        'set_as_primary' => ($user && ($request->set_as_primary ?? false)) ? true : false,
+                    ],
+                    'customer_info' => [
+                        'gender' => $request->gender ?? null,
+                        'first_name' => $request->first_name,
+                        'last_name' => $request->last_name,
+                        'birthdate' => $request->birthdate ?? null,
+                        'newsletter_subscribe' => $request->newsletter_subscribe ?? false,
+                        'account_created' => ($request->create_account && !Auth::check()) ? true : false,
+                        'existing_user' => Auth::check() ? true : false,
+                    ],
+                    // SIMPLE coupon info
+                    'coupon_info' => $couponInfo,
+                    'checkout_info' => [
+                        'created_via' => 'web_checkout_with_address_integration_no_cod_no_tax_simple_coupon',
+                        'user_agent' => $request->userAgent(),
+                        'ip_address' => $request->ip(),
+                        'checkout_timestamp' => now()->toISOString(),
+                        'tax_rate' => 0,
+                        'cart_items_count' => $cartItems->count(),
+                        'total_weight' => $cartItems->sum(function($item) { 
+                            return ($item['weight'] ?? 500) * $item['quantity']; 
+                        }),
+                        'subtotal_breakdown' => [
+                            'items_subtotal' => $subtotal,
+                            'shipping_cost' => $shippingCost,
+                            'tax_amount' => 0,
+                            'discount_amount' => $discountAmount,
+                            'total_amount' => $totalAmount
+                        ]
+                    ]
+                ]),
+                
+                'created_at' => now(),
+                'updated_at' => now()
+            ];
+
+            $existingColumns = [
+                'order_number', 'user_id', 'customer_name', 'customer_email', 'customer_phone',
+                'status', 'subtotal', 'tax_amount', 'shipping_cost', 'discount_amount', 
+                'total_amount', 'currency', 'shipping_address', 'billing_address', 
+                'store_origin', 'payment_method', 'payment_token', 
+                'payment_url', 'tracking_number', 'shipped_at', 'delivered_at', 
+                'notes', 'meta_data', 'created_at', 'updated_at',
+                'shipping_destination_id', 'shipping_destination_label', 'shipping_postal_code',
+                'snap_token', 'payment_response'
+            ];
+
+            $filteredOrderData = array_intersect_key($orderData, array_flip($existingColumns));
+
+            Log::info('Creating order with address integration - Online payment only - NO TAX + SIMPLE COUPON', [
+                'order_number' => $orderNumber,
+                'customer_email' => $request->email,
+                'customer_gender' => $request->gender,
+                'customer_birthdate' => $request->birthdate,
+                'payment_method' => $request->payment_method,
+                'total_amount' => $totalAmount,
+                'discount_amount' => $discountAmount,
+                'coupon_applied' => !empty($couponInfo),
+                'coupon_code' => $couponInfo['code'] ?? null,
+                'initial_status' => 'pending',
+                'user_id' => $user ? $user->id : null,
+                'account_created' => ($request->create_account && !Auth::check()) ? true : false,
+                'address_used' => $addressData['label'] . ' - ' . $addressData['recipient_name'],
+                'address_saved' => $addressData['address_id'] ? true : false,
+                'tax_amount' => 0
+            ]);
+
+            $order = Order::create($filteredOrderData);
+
+            foreach ($cartItems as $item) {
+                $product = Product::lockForUpdate()->find($item['id']);
+                
+                if (!$product || $product->stock_quantity < $item['quantity']) {
+                    throw new \Exception("Insufficient stock for {$item['name']}");
+                }
+
+                OrderItem::create([
+                    'order_id' => $order->id,
+                    'product_id' => $item['id'],
+                    'product_name' => $item['name'],
+                    'product_sku' => $item['sku'] ?? '',
+                    'product_price' => (float) $item['price'],
+                    'quantity' => (int) $item['quantity'],
+                    'total_price' => (float) $item['subtotal']
+                ]);
+
+                $product->decrement('stock_quantity', $item['quantity']);
+                
+                Log::info('Stock updated for product', [
+                    'product_id' => $item['id'],
+                    'product_name' => $item['name'],
+                    'quantity_sold' => $item['quantity'],
+                    'remaining_stock' => $product->fresh()->stock_quantity
+                ]);
+            }
+
+            if ($request->newsletter_subscribe && $user) {
+                Log::info('User subscribed to newsletter', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
+            }
+
+            DB::commit();
+
+            Session::forget('cart');
+            
+            // Clear coupon from session after successful order
+            if ($couponInfo) {
+                Session::forget('applied_coupon');
+                Log::info('🎫 Coupon cleared from session after order creation');
+            }
+
+            Log::info('Order created successfully with address integration - Online payment only - NO TAX + SIMPLE COUPON', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'payment_method' => $request->payment_method,
+                'total_amount' => $totalAmount,
+                'discount_amount' => $discountAmount,
+                'coupon_applied' => !empty($couponInfo),
+                'coupon_code' => $couponInfo['code'] ?? null,
+                'status' => $order->status,
+                'customer_email' => $request->email,
+                'user_id' => $user ? $user->id : null,
+                'customer_gender' => $request->gender,
+                'customer_birthdate' => $request->birthdate,
+                'address_recipient' => $addressData['recipient_name'],
+                'address_saved' => !is_null($addressData['address_id']),
+                'tax_amount' => 0
+            ]);
+
+            // ALL PAYMENTS NOW GO THROUGH MIDTRANS
+            Log::info('Creating Midtrans payment session - NO TAX + SIMPLE COUPON', [
+                'order_number' => $order->order_number,
+                'payment_method' => $request->payment_method,
+                'customer_name' => $order->customer_name,
+                'final_amount' => $totalAmount,
+                'discount_applied' => $discountAmount
+            ]);
+            
+            $snapToken = $this->createMidtransPayment($order, $cartItems, $request);
+            
+            if ($snapToken) {
+                $order->update(['snap_token' => $snapToken]);
+                
+                Log::info('Midtrans token created successfully - NO TAX + SIMPLE COUPON', [
+                    'order_number' => $order->order_number,
+                    'snap_token_length' => strlen($snapToken),
+                    'final_amount' => $totalAmount
+                ]);
+
+                if ($request->ajax() || $request->expectsJson()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Order created successfully. Opening payment gateway...',
+                        'order_number' => $order->order_number,
+                        'customer_name' => $order->customer_name,
+                        'snap_token' => $snapToken,
+                        'redirect_url' => route('checkout.payment', ['orderNumber' => $order->order_number])
+                    ]);
+                }
+                
+                return redirect()->route('checkout.payment', ['orderNumber' => $order->order_number])
+                               ->with('snap_token', $snapToken);
+                               
+            } else {
+                Log::error('Failed to create Midtrans token - NO TAX + SIMPLE COUPON', [
+                    'order_number' => $order->order_number,
+                    'payment_method' => $request->payment_method,
+                    'customer_email' => $request->email,
+                    'total_amount' => $totalAmount
+                ]);
+                
+                if ($request->ajax() || $request->expectsJson()) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Failed to create payment session. Please try again or contact support.',
+                        'order_number' => $order->order_number
+                    ], 500);
+                }
+                
+                return redirect()->route('checkout.success', ['orderNumber' => $order->order_number])
+                               ->with('error', 'Order created but payment session failed. Please contact support.');
+            }
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollback();
+            Log::warning('Validation error in checkout - NO TAX + SIMPLE COUPON', [
+                'errors' => $e->errors(),
+                'customer_email' => $request->email ?? 'unknown',
+                'validation_fields' => array_keys($e->errors())
+            ]);
+            
+            if ($request->ajax() || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $e->errors()
+                ], 422);
+            }
+            
+            return back()->withInput()->withErrors($e->errors());
+            
+        } catch (\Exception $e) {
+            DB::rollback();
+            Log::error('Checkout error - NO TAX + SIMPLE COUPON: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'payment_method' => $request->payment_method ?? 'unknown',
+                'customer_email' => $request->email ?? 'unknown',
+                'customer_gender' => $request->gender ?? 'unknown',
+                'order_number' => $orderNumber ?? 'not_generated',
+                'error_line' => $e->getLine(),
+                'error_file' => $e->getFile()
+            ]);
+            
+            $errorMessage = 'Failed to process checkout: ' . $e->getMessage();
+            
+            if ($request->ajax() || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $errorMessage
+                ], 500);
+            }
+            
+            return back()->withInput()->with('error', $errorMessage);
+        }
+    }
+
+    /**
+     * Handle address data processing - keep same as working version
+     */
+    private function handleAddressData(Request $request, $user)
+    {
+        if (!empty($request->saved_address_id) && $request->saved_address_id !== 'new' && $user) {
+            $savedAddress = $user->addresses()
+                                ->where('id', $request->saved_address_id)
+                                ->where('is_active', true)
+                                ->first();
+                                
+            if ($savedAddress) {
+                Log::info('Using saved address for checkout', [
+                    'user_id' => $user->id,
+                    'address_id' => $savedAddress->id,
+                    'address_label' => $savedAddress->label,
+                    'recipient_name' => $savedAddress->recipient_name
+                ]);
+                
+                return [
+                    'address_id' => $savedAddress->id,
+                    'label' => $savedAddress->label,
+                    'recipient_name' => $savedAddress->recipient_name,
+                    'phone_recipient' => $savedAddress->phone_recipient,
+                    'province_name' => $savedAddress->province_name,
+                    'city_name' => $savedAddress->city_name,
+                    'subdistrict_name' => $savedAddress->subdistrict_name,
+                    'postal_code' => $savedAddress->postal_code,
+                    'destination_id' => $savedAddress->destination_id,
+                    'street_address' => $savedAddress->street_address,
+                    'full_address' => $savedAddress->full_address,
+                    'location_string' => $savedAddress->location_string,
+                ];
+            }
+        }
+        
+        $addressData = [
+            'address_id' => null,
+            'label' => $request->address_label ?? 'Rumah',
+            'recipient_name' => trim($request->recipient_name),
+            'phone_recipient' => preg_replace('/[^0-9+\-\s\(\)]/', '', $request->phone_recipient),
+            'province_name' => $request->province_name,
+            'city_name' => $request->city_name,
+            'subdistrict_name' => $request->subdistrict_name,
+            'postal_code' => $request->postal_code,
+            'destination_id' => $request->destination_id ?? null,
+            'street_address' => trim($request->street_address),
+        ];
+        
+        $addressData['full_address'] = $addressData['street_address'] . ', ' . 
+                                      $addressData['subdistrict_name'] . ', ' . 
+                                      $addressData['city_name'] . ', ' . 
+                                      $addressData['province_name'] . ' ' . 
+                                      $addressData['postal_code'];
+        
+        $addressData['location_string'] = $addressData['province_name'] . ', ' . 
+                                         $addressData['city_name'] . ', ' . 
+                                         $addressData['subdistrict_name'] . ', ' . 
+                                         $addressData['postal_code'];
+        
+        if ($user && ($request->save_address ?? false)) {
+            try {
+                $newAddress = $user->addresses()->create([
+                    'label' => $addressData['label'],
+                    'recipient_name' => $addressData['recipient_name'],
+                    'phone_recipient' => $addressData['phone_recipient'],
+                    'province_name' => $addressData['province_name'],
+                    'city_name' => $addressData['city_name'],
+                    'subdistrict_name' => $addressData['subdistrict_name'],
+                    'postal_code' => $addressData['postal_code'],
+                    'destination_id' => $addressData['destination_id'],
+                    'street_address' => $addressData['street_address'],
+                    'is_primary' => false,
+                    'is_active' => true,
+                ]);
+                
+                if ($request->set_as_primary ?? false) {
+                    $newAddress->setPrimary();
+                }
+                
+                $addressData['address_id'] = $newAddress->id;
+                
+                Log::info('New address saved during checkout', [
+                    'user_id' => $user->id,
+                    'address_id' => $newAddress->id,
+                    'label' => $newAddress->label,
+                    'is_primary' => $newAddress->is_primary,
+                ]);
+                
+            } catch (\Exception $e) {
+                Log::warning('Failed to save address during checkout', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                    'address_data' => $addressData
+                ]);
+            }
+        }
+        
+        return $addressData;
+    }
+
+    /**
+     * Handle user account creation or update - keep same as working version
+     */
+    private function handleUserAccountCreationOrUpdate(Request $request)
+    {
+        $user = null;
+        
+        if ($request->create_account && !Auth::check()) {
+            $existingUser = User::where('email', $request->email)->first();
+            if ($existingUser) {
+                throw new \Exception('Email already exists. Please login or use different email.');
+            }
+
+            $user = User::create([
+                'name' => $request->first_name . ' ' . $request->last_name,
+                'email' => $request->email,
+                'phone' => $request->phone,
+                'email_verified_at' => now(),
+                'password' => Hash::make($request->password),
+                'gender' => $request->gender,
+                'birthdate' => $request->birthdate,
+            ]);
+
+            Auth::login($user);
+
+            Log::info('New user account created during checkout', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'gender' => $user->gender,
+                'birthdate' => $user->birthdate,
+                'phone' => $user->phone
+            ]);
+            
+        } elseif (Auth::check()) {
+            $user = Auth::user();
+            
+            $userModel = User::find($user->id);
+            
+            if ($userModel) {
+                $updateData = [];
+                
+                if ($request->gender && (!$userModel->gender || $userModel->gender !== $request->gender)) {
+                    $updateData['gender'] = $request->gender;
+                }
+                
+                if ($request->birthdate && !$userModel->birthdate) {
+                    $updateData['birthdate'] = $request->birthdate;
+                }
+                
+                if ($request->phone && (!$userModel->phone || $userModel->phone !== $request->phone)) {
+                    $updateData['phone'] = $request->phone;
+                }
+                
+                if (!empty($updateData)) {
+                    try {
+                        $updateResult = $userModel->update($updateData);
+                        
+                        Log::info('Updated existing user data from checkout', [
+                            'user_id' => $userModel->id,
+                            'email' => $userModel->email,
+                            'updated_fields' => array_keys($updateData),
+                            'updated_data' => $updateData,
+                            'update_result' => $updateResult
+                        ]);
+                        
+                        $user = $userModel;
+                        
+                    } catch (\Exception $updateError) {
+                        Log::error('Failed to update user data', [
+                            'user_id' => $userModel->id,
+                            'error' => $updateError->getMessage(),
+                            'update_data' => $updateData
+                        ]);
+                    }
+                }
+            }
+        }
+
+        return $user;
+    }
+
+    /**
+     * CRITICAL FIX: Create Midtrans payment with SIMPLE coupon support that works like working version
+     */
+    private function createMidtransPayment($order, $cartItems, $request)
+    {
+        try {
+            Log::info('Creating Midtrans payment session - NO TAX + SIMPLE COUPON', [
+                'order_number' => $order->order_number,
+                'total_amount' => $order->total_amount,
+                'discount_amount' => $order->discount_amount ?? 0,
+                'payment_method' => $request->payment_method,
+                'customer_email' => $request->email ?? $order->customer_email
+            ]);
+
+            // EXACTLY like working version - prepare item details
+            $itemDetails = [];
+            
+            foreach ($cartItems as $item) {
+                $itemDetails[] = [
+                    'id' => (string) $item['id'],
+                    'price' => (int) $item['price'],
+                    'quantity' => (int) $item['quantity'],
+                    'name' => substr($item['name'], 0, 50)
+                ];
+            }
+            
+            // Add shipping as item - EXACTLY like working version
+            if ($order->shipping_cost > 0) {
+                $shippingMethodName = 'Shipping Cost';
+                
+                if ($order->meta_data) {
+                    $metaData = json_decode($order->meta_data, true);
+                    if (isset($metaData['shipping_method'])) {
+                        $shippingMethodName = 'Shipping - ' . substr($metaData['shipping_method'], 0, 30);
+                    }
+                }
+                
+                $itemDetails[] = [
+                    'id' => 'shipping',
+                    'price' => (int) $order->shipping_cost,
+                    'quantity' => 1,
+                    'name' => $shippingMethodName
+                ];
+            }
+            
+            // SIMPLE COUPON: Add discount as NEGATIVE item if exists - BUT SAFER
+            $discountAmount = (float) ($order->discount_amount ?? 0);
+            if ($discountAmount > 0) {
+                $discountName = 'Discount';
+                
+                // Try to get coupon code from order meta_data
+                if ($order->meta_data) {
+                    $metaData = json_decode($order->meta_data, true);
+                    if (isset($metaData['coupon_info']['code'])) {
+                        $discountName = 'Discount (' . $metaData['coupon_info']['code'] . ')';
+                    }
+                }
+                
+                $itemDetails[] = [
+                    'id' => 'discount',
+                    'price' => -((int) $discountAmount), // NEGATIVE for discount
+                    'quantity' => 1,
+                    'name' => $discountName
+                ];
+                
+                Log::info('Added discount item to Midtrans payload', [
+                    'discount_name' => $discountName,
+                    'discount_amount' => -((int) $discountAmount)
+                ]);
+            }
+            
+            // VERIFICATION: Check if item_details sum equals gross_amount
+            $calculatedSum = 0;
+            foreach ($itemDetails as $item) {
+                $calculatedSum += $item['price'] * $item['quantity'];
+            }
+            
+            $expectedTotal = (int) $order->total_amount;
+            
+            Log::info('Midtrans item details verification', [
+                'calculated_sum' => $calculatedSum,
+                'expected_total' => $expectedTotal,
+                'amounts_match' => ($calculatedSum === $expectedTotal),
+                'item_details_count' => count($itemDetails)
+            ]);
+            
+            // If amounts don't match, add adjustment
+            if ($calculatedSum !== $expectedTotal) {
+                $difference = $expectedTotal - $calculatedSum;
+                
+                Log::warning('Midtrans amounts mismatch, adding adjustment', [
+                    'difference' => $difference,
+                    'calculated_sum' => $calculatedSum,
+                    'expected_total' => $expectedTotal
+                ]);
+                
+                $itemDetails[] = [
+                    'id' => 'adjustment',
+                    'price' => $difference,
+                    'quantity' => 1,
+                    'name' => 'Price Adjustment'
+                ];
+            }
+
+            // Customer details - EXACTLY like working version
+            $customerDetails = [
+                'first_name' => $request->first_name ?? explode(' ', $order->customer_name)[0],
+                'last_name' => $request->last_name ?? (explode(' ', $order->customer_name, 2)[1] ?? ''),
+                'email' => $request->email ?? $order->customer_email,
+                'phone' => $request->phone ?? $order->customer_phone,
+                'billing_address' => [
+                    'first_name' => $request->first_name ?? explode(' ', $order->customer_name)[0],
+                    'last_name' => $request->last_name ?? (explode(' ', $order->customer_name, 2)[1] ?? ''),
+                    'address' => $request->street_address ?? $request->address ?? substr($order->shipping_address, 0, 200),
+                    'city' => substr($request->city_name ?? $request->destination_label ?? 'Jakarta', 0, 20),
+                    'postal_code' => $request->postal_code ?? $order->shipping_postal_code ?? '10000',
+                    'phone' => $request->phone ?? $order->customer_phone,
+                    'country_code' => 'IDN'
+                ],
+                'shipping_address' => [
+                    'first_name' => $request->first_name ?? explode(' ', $order->customer_name)[0],
+                    'last_name' => $request->last_name ?? (explode(' ', $order->customer_name, 2)[1] ?? ''),
+                    'address' => $request->street_address ?? $request->address ?? substr($order->shipping_address, 0, 200),
+                    'city' => substr($request->city_name ?? $request->destination_label ?? 'Jakarta', 0, 20),
+                    'postal_code' => $request->postal_code ?? $order->shipping_postal_code ?? '10000',
+                    'phone' => $request->phone ?? $order->customer_phone,
+                    'country_code' => 'IDN'
+                ]
+            ];
+
+            $transactionDetails = [
+                'order_id' => $order->order_number,
+                'gross_amount' => (int) $order->total_amount
+            ];
+
+            // Build payload - EXACTLY like working version
+            $midtransPayload = [
+                'transaction_details' => $transactionDetails,
+                'customer_details' => $customerDetails,
+                'item_details' => $itemDetails
+            ];
+
+            Log::info('Calling MidtransService with simple coupon-enabled payload', [
+                'order_number' => $order->order_number,
+                'gross_amount' => (int) $order->total_amount,
+                'item_details_count' => count($itemDetails),
+                'has_discount' => $discountAmount > 0
+            ]);
+
+            // CRITICAL: Use MidtransService EXACTLY like working version
+            $response = $this->midtransService->createSnapToken($midtransPayload);
+            
+            if (isset($response['token'])) {
+                Log::info('Midtrans Snap token created successfully with simple coupon support', [
+                    'order_number' => $order->order_number,
+                    'token_length' => strlen($response['token']),
+                    'discount_applied' => $discountAmount
+                ]);
+                
+                return $response['token'];
+            } else {
+                Log::error('MidtransService returned no token', [
+                    'order_number' => $order->order_number,
+                    'response' => $response
+                ]);
+                return null;
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Exception in Midtrans payment creation with simple coupon support', [
+                'order_number' => $order->order_number ?? 'unknown',
+                'error' => $e->getMessage(),
+                'error_line' => $e->getLine(),
+                'error_file' => $e->getFile(),
+                'discount_amount' => $order->discount_amount ?? 0
+            ]);
+            
+            return null;
+        }
+    }
+
+    // Keep ALL other methods exactly the same as working version
     private function getMockDestinations($search)
     {
         $mockDestinations = [];
         
-        // Common destinations based on search term
         $searchLower = strtolower($search);
         
         if (strpos($searchLower, 'jakarta') !== false) {
@@ -211,7 +1219,6 @@ class CheckoutController extends Controller
         }
         
         if (empty($mockDestinations)) {
-            // Generic mock for unknown search terms
             $mockDestinations = [
                 [
                     'location_id' => 'mock_generic_001',
@@ -239,90 +1246,16 @@ class CheckoutController extends Controller
         ]);
     }
 
-    /**
-     * Calculate shipping - Modified for search-based approach
-     */
-    public function calculateShipping(Request $request)
-    {
-        $destinationId = $request->get('destination_id');
-        $destinationLabel = $request->get('destination_label', '');
-        $weight = $request->get('weight', 1000);
-
-        Log::info('Auto-calculating shipping via RajaOngkir V2 (Search-based)', [
-            'destination_id' => $destinationId,
-            'destination_label' => $destinationLabel,
-            'weight' => $weight,
-            'store_origin_city' => env('STORE_ORIGIN_CITY_NAME', 'Not configured')
-        ]);
-
-        if (!$destinationId) {
-            return response()->json(['error' => 'Destination ID is required'], 400);
-        }
-
-        try {
-            // Get origin from .env configuration
-            $originId = $this->getOriginIdFromEnv();
-            
-            Log::info('Using origin from .env configuration', [
-                'origin_id' => $originId,
-                'origin_city_name' => env('STORE_ORIGIN_CITY_NAME'),
-                'origin_city_id_fallback' => env('STORE_ORIGIN_CITY_ID')
-            ]);
-
-            // Try to calculate real shipping costs
-            $shippingOptions = $this->calculateRealShipping($originId, $destinationId, $weight);
-            
-            if (empty($shippingOptions)) {
-                // Fallback to mock shipping options
-                Log::info('Using mock shipping options (real endpoint not found)');
-                $shippingOptions = $this->getMockShippingOptions($weight, $destinationLabel);
-            }
-
-            if (!empty($shippingOptions)) {
-                // Auto-sort by best value
-                $shippingOptions = $this->autoSortShippingOptions($shippingOptions);
-                
-                Log::info('Successfully calculated ' . count($shippingOptions) . ' shipping options');
-                
-                return response()->json([
-                    'success' => true,
-                    'total_options' => count($shippingOptions),
-                    'origin_id' => $originId,
-                    'origin_city_name' => env('STORE_ORIGIN_CITY_NAME'),
-                    'destination_id' => $destinationId,
-                    'destination_label' => $destinationLabel,
-                    'weight' => $weight,
-                    'api_version' => 'v2_fixed_env',
-                    'options' => $shippingOptions
-                ]);
-            } else {
-                Log::warning('No shipping options available');
-                return response()->json(['error' => 'No shipping options available for this route'], 404);
-            }
-
-        } catch (\Exception $e) {
-            Log::error('RajaOngkir V2 shipping calculation error: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to calculate shipping: ' . $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Get origin ID from .env configuration
-     * Modified to read from environment variables with API error handling
-     */
     private function getOriginIdFromEnv()
     {
-        // Get origin configuration from .env
         $originCityName = env('STORE_ORIGIN_CITY_NAME', 'jakarta selatan');
         $originCityIdFallback = env('STORE_ORIGIN_CITY_ID', 158);
-        // Jika .env ada membaca dari .env kalo tidak ada membaca default 158
         
         Log::info('Getting origin from .env', [
             'configured_city_name' => $originCityName,
             'configured_city_id_fallback' => $originCityIdFallback
         ]);
 
-        // First try to get origin ID by searching the city name
         try {
             $response = Http::timeout(10)->withHeaders([
                 'key' => $this->rajaOngkirApiKey
@@ -343,107 +1276,72 @@ class CheckoutController extends Controller
                     ]);
                     return $foundOrigin['id'];
                 }
-            } else {
-                Log::warning('API search failed', [
-                    'status' => $response->status(),
-                    'response' => $response->body(),
-                    'search_term' => $originCityName
-                ]);
             }
         } catch (\Exception $e) {
             Log::warning('Error searching origin city via API: ' . $e->getMessage());
         }
         
-        // Fallback to configured city ID from .env
-        Log::info('Using fallback origin ID from .env (API not available)', [
-            'fallback_origin_id' => $originCityIdFallback,
-            'reason' => 'API search failed or unauthorized'
+        Log::info('Using fallback origin ID from .env', [
+            'fallback_origin_id' => $originCityIdFallback
         ]);
         
         return $originCityIdFallback;
     }
 
-    /**
-     * Legacy method - keeping for compatibility but now calls getOriginIdFromEnv
-     */
-    private function getOriginId($destinationId)
-    {
-        return $this->getOriginIdFromEnv();
-    }
-
-    /**
-     * Try to calculate real shipping costs
-     */
     private function calculateRealShipping($originId, $destinationId, $weight)
     {
-        $couriers = ['jne', 'pos', 'tiki', 'sicepat'];
+        $couriers = ['jne'];
         $shippingOptions = [];
 
-        // Try different cost endpoints
         $endpoints = ['/cost', '/shipping/cost', '/destination/cost', '/calculate'];
         
         foreach ($endpoints as $endpoint) {
-            foreach ($couriers as $courier) {
-                try {
-                    $response = Http::timeout(15)->withHeaders([
-                        'key' => $this->rajaOngkirApiKey
-                    ])->post($this->rajaOngkirBaseUrl . $endpoint, [
-                        'origin' => $originId,
-                        'destination' => $destinationId,
-                        'weight' => $weight,
-                        'courier' => $courier
-                    ]);
+            try {
+                $response = Http::timeout(15)->withHeaders([
+                    'key' => $this->rajaOngkirApiKey
+                ])->post($this->rajaOngkirBaseUrl . $endpoint, [
+                    'origin' => $originId,
+                    'destination' => $destinationId,
+                    'weight' => $weight,
+                    'courier' => 'jne'
+                ]);
 
-                    if ($response->successful()) {
-                        $data = $response->json();
-                        
-                        Log::info("Found working cost endpoint: {$endpoint} for courier: {$courier}");
-                        Log::info("Response: " . json_encode($data));
-                        
-                        // Parse response based on actual format
-                        $parsed = $this->parseShippingResponse($data, $courier);
-                        $shippingOptions = array_merge($shippingOptions, $parsed);
-                    }
-                } catch (\Exception $e) {
-                    continue;
+                if ($response->successful()) {
+                    $data = $response->json();
+                    
+                    Log::info("Found working cost endpoint: {$endpoint} for JNE courier");
+                    
+                    $parsed = $this->parseShippingResponse($data, 'jne');
+                    $shippingOptions = array_merge($shippingOptions, $parsed);
                 }
+            } catch (\Exception $e) {
+                continue;
             }
             
             if (!empty($shippingOptions)) {
-                break; // Stop if we found working endpoint
+                break;
             }
         }
 
         return $shippingOptions;
     }
 
-    /**
-     * Parse shipping response when we find working endpoint
-     */
     private function parseShippingResponse($data, $courier)
     {
-        // This will need to be adjusted based on actual response format
-        // For now, return empty array until we find working endpoint
         return [];
     }
 
-    /**
-     * Generate mock shipping options for testing
-     * Enhanced to show origin information
-     */
     private function getMockShippingOptions($weight, $destinationLabel = '')
     {
-        $basePrice = max(10000, $weight * 5); // Minimum 10k, 5 rupiah per gram
+        $basePrice = max(10000, $weight * 5);
         
-        // Add distance factor based on destination
         $distanceFactor = 1;
         $originCity = env('STORE_ORIGIN_CITY_NAME', 'jakarta');
         
-        // Calculate distance factor based on origin and destination
         if (stripos($destinationLabel, strtolower($originCity)) !== false) {
-            $distanceFactor = 1; // Same city
+            $distanceFactor = 1;
         } elseif (stripos($destinationLabel, 'jakarta') !== false && stripos($originCity, 'jakarta') !== false) {
-            $distanceFactor = 1; // Within Jakarta area
+            $distanceFactor = 1;
         } elseif (stripos($destinationLabel, 'bandung') !== false || stripos($destinationLabel, 'jawa barat') !== false) {
             $distanceFactor = 1.2;
         } elseif (stripos($destinationLabel, 'surabaya') !== false || stripos($destinationLabel, 'jawa timur') !== false) {
@@ -467,55 +1365,37 @@ class CheckoutController extends Controller
                 'formatted_cost' => 'Rp ' . number_format($adjustedPrice, 0, ',', '.'),
                 'formatted_etd' => '2-3 hari',
                 'is_mock' => true,
-                'origin_info' => env('STORE_ORIGIN_CITY_NAME', 'jakarta')
-            ],
-            [
-                'courier' => 'POS',
-                'courier_name' => 'Pos Indonesia',
-                'service' => 'Paket Kilat',
-                'description' => 'Pos Kilat Khusus',
-                'cost' => (int) ($adjustedPrice * 0.8),
-                'etd' => '3-4',
-                'formatted_cost' => 'Rp ' . number_format($adjustedPrice * 0.8, 0, ',', '.'),
-                'formatted_etd' => '3-4 hari',
-                'is_mock' => true,
-                'origin_info' => env('STORE_ORIGIN_CITY_NAME', 'jakarta')
-            ],
-            [
-                'courier' => 'TIKI',
-                'courier_name' => 'Citra Van Titipan Kilat',
-                'service' => 'ECO',
-                'description' => 'Ekonomi Service',
-                'cost' => (int) ($adjustedPrice * 0.7),
-                'etd' => '4-5',
-                'formatted_cost' => 'Rp ' . number_format($adjustedPrice * 0.7, 0, ',', '.'),
-                'formatted_etd' => '4-5 hari',
-                'is_mock' => true,
-                'origin_info' => env('STORE_ORIGIN_CITY_NAME', 'jakarta')
-            ],
-            [
-                'courier' => 'SICEPAT',
-                'courier_name' => 'SiCepat Ekspres',
-                'service' => 'REG',
-                'description' => 'Layanan Reguler',
-                'cost' => (int) ($adjustedPrice * 0.9),
-                'etd' => '2-3',
-                'formatted_cost' => 'Rp ' . number_format($adjustedPrice * 0.9, 0, ',', '.'),
-                'formatted_etd' => '2-3 hari',
-                'is_mock' => true,
-                'origin_info' => env('STORE_ORIGIN_CITY_NAME', 'jakarta')
+                'type' => 'mock',
+                'origin_info' => env('STORE_ORIGIN_CITY_NAME', 'jakarta'),
+                'recommended' => true
             ],
             [
                 'courier' => 'JNE',
                 'courier_name' => 'Jalur Nugraha Ekakurir (JNE)',
                 'service' => 'YES',
                 'description' => 'Yakin Esok Sampai',
-                'cost' => (int) ($adjustedPrice * 1.5),
+                'cost' => (int) ($adjustedPrice * 1.8),
                 'etd' => '1',
-                'formatted_cost' => 'Rp ' . number_format($adjustedPrice * 1.5, 0, ',', '.'),
+                'formatted_cost' => 'Rp ' . number_format($adjustedPrice * 1.8, 0, ',', '.'),
                 'formatted_etd' => '1 hari',
                 'is_mock' => true,
-                'origin_info' => env('STORE_ORIGIN_CITY_NAME', 'jakarta')
+                'type' => 'mock',
+                'origin_info' => env('STORE_ORIGIN_CITY_NAME', 'jakarta'),
+                'recommended' => false
+            ],
+            [
+                'courier' => 'JNE',
+                'courier_name' => 'Jalur Nugraha Ekakurir (JNE)',
+                'service' => 'OKE',
+                'description' => 'Ongkos Kirim Ekonomis',
+                'cost' => (int) ($adjustedPrice * 0.8),
+                'etd' => '3-4',
+                'formatted_cost' => 'Rp ' . number_format($adjustedPrice * 0.8, 0, ',', '.'),
+                'formatted_etd' => '3-4 hari',
+                'is_mock' => true,
+                'type' => 'mock',
+                'origin_info' => env('STORE_ORIGIN_CITY_NAME', 'jakarta'),
+                'recommended' => false
             ]
         ];
     }
@@ -533,8 +1413,8 @@ class CheckoutController extends Controller
                 if (isset($data['data']) && is_array($data['data'])) {
                     return array_map(function($province) {
                         return [
-                            'province_id' => $province['id'],      // Fixed format
-                            'province' => $province['name']        // Fixed format
+                            'province_id' => $province['id'],
+                            'province' => $province['name']
                         ];
                     }, $data['data']);
                 }
@@ -585,13 +1465,17 @@ class CheckoutController extends Controller
     private function autoSortShippingOptions($options)
     {
         usort($options, function($a, $b) {
+            if ($a['recommended'] && !$b['recommended']) return -1;
+            if (!$a['recommended'] && $b['recommended']) return 1;
+            
             $etdA = $this->parseEtd($a['etd']);
             $etdB = $this->parseEtd($b['etd']);
             
-            $scoreA = ($a['cost'] / 1000) + ($etdA * 2);
-            $scoreB = ($b['cost'] / 1000) + ($etdB * 2);
+            if ($etdA !== $etdB) {
+                return $etdA <=> $etdB;
+            }
             
-            return $scoreA <=> $scoreB;
+            return $a['cost'] <=> $b['cost'];
         });
         
         return $options;
@@ -607,428 +1491,54 @@ class CheckoutController extends Controller
         return intval($etd);
     }
 
-    // ... Rest of the methods (store, success, getCartItems, etc.) remain the same
-    
-public function store(Request $request)
-{
-    Log::info('=== CHECKOUT REQUEST START ===', [
-        'payment_method' => $request->payment_method,
-        'is_ajax' => $request->ajax(),
-        'content_type' => $request->header('Content-Type'),
-        'accept' => $request->header('Accept'),
-        'all_data' => $request->all(),
-        'url' => $request->url(),
-        'method' => $request->method()
-    ]);
-
-    // Enhanced validation with detailed error messages
-    try {
-        $validatedData = $request->validate([
-            'social_title' => 'nullable|in:Mr.,Mrs.,Ms.,Miss',
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'email' => 'required|email|max:255',
-            'phone' => 'required|string|max:20',
-            'birthdate' => 'nullable|date|before:today',
-            'address' => 'required|string|max:500',
-            'destination_id' => 'required|string',
-            'destination_label' => 'required|string',
-            'postal_code' => 'required|string|max:10',
-            'shipping_method' => 'required|string',
-            'shipping_cost' => 'required|numeric|min:0',
-            'payment_method' => 'required|in:bank_transfer,credit_card,ewallet,cod',
-            'create_account' => 'nullable|boolean',
-            'password' => 'required_if:create_account,1|nullable|string|min:8',
-            'password_confirmation' => 'required_if:create_account,1|nullable|string|same:password',
-            'privacy_accepted' => 'required|accepted',
-            'newsletter_subscribe' => 'nullable|boolean',
-            'notes' => 'nullable|string|max:1000'
-        ], [
-            'privacy_accepted.required' => 'You must accept the privacy policy to continue.',
-            'privacy_accepted.accepted' => 'You must accept the privacy policy to continue.',
-            'destination_id.required' => 'Please select a delivery location.',
-            'destination_label.required' => 'Please select a delivery location.',
-            'shipping_method.required' => 'Please select a shipping method.',
-            'shipping_cost.required' => 'Shipping cost is required.',
-            'payment_method.required' => 'Please select a payment method.',
-            'payment_method.in' => 'Invalid payment method selected.',
-            'first_name.required' => 'First name is required.',
-            'last_name.required' => 'Last name is required.',
-            'email.required' => 'Email address is required.',
-            'email.email' => 'Please enter a valid email address.',
-            'phone.required' => 'Phone number is required.',
-            'address.required' => 'Street address is required.',
-            'postal_code.required' => 'Postal code is required.'
-        ]);
-
-        Log::info('✅ Validation passed', [
-            'validated_fields' => array_keys($validatedData),
-            'payment_method' => $validatedData['payment_method']
-        ]);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        Log::error('❌ Validation failed', [
-            'errors' => $e->errors(),
-            'input_data' => $request->all()
-        ]);
-
-        if ($request->ajax()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $e->errors(),
-                'message' => 'Validation failed. Please check the form fields.'
-            ], 422);
-        }
-
-        return back()->withErrors($e->errors())->withInput();
-    }
-    
-    // Additional privacy check - Double verification
-    if (!$request->has('privacy_accepted') || $request->privacy_accepted != '1') {
-        Log::error('❌ Privacy policy not accepted', [
-            'privacy_accepted' => $request->privacy_accepted,
-            'has_privacy_accepted' => $request->has('privacy_accepted')
-        ]);
-
-        if ($request->ajax()) {
-            return response()->json([
-                'success' => false,
-                'errors' => ['privacy_accepted' => ['You must accept the privacy policy to continue.']],
-                'message' => 'Privacy policy must be accepted.'
-            ], 422);
-        }
-        return back()->withInput()->withErrors([
-            'privacy_accepted' => 'You must accept the privacy policy to continue.'
-        ]);
-    }
-
-    try {
-        DB::beginTransaction();
-        Log::info('📊 Starting database transaction');
-
-        // Get and validate cart
-        $cart = Session::get('cart', []);
-        
-        if (empty($cart)) {
-            throw new \Exception('Cart is empty');
-        }
-
-        $cartItems = $this->getCartItems($cart);
-        
-        if ($cartItems->isEmpty()) {
-            throw new \Exception('No valid items in cart');
-        }
-
-        Log::info('🛒 Cart validated', [
-            'cart_count' => count($cart),
-            'valid_items' => $cartItems->count(),
-            'cart_items' => $cartItems->pluck('name')->toArray()
-        ]);
-
-        $subtotal = $cartItems->sum('subtotal');
-        $shippingCost = (float) $request->shipping_cost;
-        $taxRate = 0.11; // 11% PPN
-        $tax = $subtotal * $taxRate;
-        $totalAmount = $subtotal + $shippingCost + $tax;
-
-        Log::info('💰 Order calculations', [
-            'subtotal' => $subtotal,
-            'shipping_cost' => $shippingCost,
-            'tax_rate' => $taxRate,
-            'tax_amount' => $tax,
-            'total_amount' => $totalAmount
-        ]);
-
-        // Create user account if requested
-        $user = null;
-        if ($request->create_account && !Auth::check()) {
-            $existingUser = User::where('email', $request->email)->first();
-            if ($existingUser) {
-                throw new \Exception('Email already exists. Please login or use different email.');
-            }
-
-            $user = User::create([
-                'name' => $request->first_name . ' ' . $request->last_name,
-                'email' => $request->email,
-                'phone' => $request->phone,
-                'email_verified_at' => now(),
-                'password' => Hash::make($request->password),
-            ]);
-
-            Log::info('👤 User account created', [
-                'user_id' => $user->id,
-                'email' => $user->email
-            ]);
-        } elseif (Auth::check()) {
-            $user = Auth::user();
-            Log::info('👤 Using existing authenticated user', [
-                'user_id' => $user->id,
-                'email' => $user->email
-            ]);
-        }
-
-        // Generate unique order number
-        do {
-            $orderNumber = 'SF-' . date('Ymd') . '-' . strtoupper(Str::random(6));
-        } while (Order::where('order_number', $orderNumber)->exists());
-
-        Log::info('📋 Generated order number', ['order_number' => $orderNumber]);
-
-        // Create order
-        $orderData = [
-            'order_number' => $orderNumber,
-            'user_id' => $user ? $user->id : null,
-            'customer_name' => $request->first_name . ' ' . $request->last_name,
-            'customer_email' => $request->email,
-            'customer_phone' => $request->phone,
-            'shipping_address' => $request->address,
-            'shipping_destination_id' => $request->destination_id,
-            'shipping_destination_label' => $request->destination_label,
-            'shipping_postal_code' => $request->postal_code,
-            'shipping_method' => $request->shipping_method,
-            'shipping_cost' => $shippingCost,
-            'payment_method' => $request->payment_method,
-            'subtotal' => $subtotal,
-            'tax_amount' => $tax,
-            'total_amount' => $totalAmount,
-            'payment_status' => 'pending',
-            'order_status' => 'pending',
-            'notes' => $request->notes,
-            'created_at' => now(),
-            'updated_at' => now()
-        ];
-
-        $order = Order::create($orderData);
-        Log::info('📦 Order created', [
-            'order_id' => $order->id,
-            'order_number' => $order->order_number
-        ]);
-
-        // Create order items and update stock
-        foreach ($cartItems as $item) {
-            $product = Product::lockForUpdate()->find($item['id']);
-            
-            if (!$product || $product->stock_quantity < $item['quantity']) {
-                throw new \Exception("Insufficient stock for {$item['name']}. Available: " . ($product ? $product->stock_quantity : 0) . ", Requested: {$item['quantity']}");
-            }
-
-            OrderItem::create([
-                'order_id' => $order->id,
-                'product_id' => $item['id'],
-                'product_name' => $item['name'],
-                'product_sku' => $item['sku'] ?? '',
-                'product_price' => (float) $item['price'],
-                'quantity' => (int) $item['quantity'],
-                'total_price' => (float) $item['subtotal']
-            ]);
-
-            $product->decrement('stock_quantity', $item['quantity']);
-            
-            Log::info("📦 Order item created and stock updated", [
-                'product_id' => $item['id'],
-                'product_name' => $item['name'],
-                'quantity' => $item['quantity'],
-                'remaining_stock' => $product->stock_quantity - $item['quantity']
-            ]);
-        }
-
-        DB::commit();
-        Log::info('✅ Database transaction committed successfully');
-
-        // Clear cart after successful order
-        Session::forget('cart');
-        Log::info('🛒 Cart cleared from session');
-
-        // Handle response based on payment method
-        if ($request->payment_method === 'cod') {
-            // COD - direct success
-            Log::info('🚚 COD payment selected - redirecting to success');
-            
-            if ($request->ajax()) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Order placed successfully! Payment will be collected on delivery.',
-                    'order_number' => $order->order_number,
-                    'redirect_url' => route('checkout.success', ['orderNumber' => $order->order_number])
-                ]);
-            } else {
-                return redirect()->route('checkout.success', ['orderNumber' => $order->order_number])
-                               ->with('success', 'Order placed successfully! Payment will be collected on delivery.');
-            }
-        } else {
-            // Online payment - create Midtrans session
-            Log::info('💳 Online payment selected - creating Midtrans session');
-            
-            $snapToken = $this->createMidtransPayment($order, $cartItems, $request);
-            
-            if ($snapToken) {
-                Log::info('✅ Midtrans token created successfully', [
-                    'order_number' => $order->order_number,
-                    'snap_token' => substr($snapToken, 0, 10) . '...' // Don't log full token
-                ]);
-
-                if ($request->ajax()) {
-                    return response()->json([
-                        'success' => true,
-                        'message' => 'Order created successfully. Opening payment gateway...',
-                        'order_number' => $order->order_number,
-                        'snap_token' => $snapToken,
-                        'redirect_url' => route('checkout.payment', ['orderNumber' => $order->order_number])
-                    ]);
-                } else {
-                    return redirect()->route('checkout.payment', ['orderNumber' => $order->order_number])
-                                   ->with('snap_token', $snapToken);
-                }
-            } else {
-                Log::error('❌ Failed to create Midtrans token', [
-                    'order_number' => $order->order_number
-                ]);
-                
-                if ($request->ajax()) {
-                    return response()->json([
-                        'success' => false,
-                        'error' => 'Failed to create payment session. Please try again or contact support.',
-                        'order_number' => $order->order_number
-                    ], 500);
-                } else {
-                    return redirect()->route('checkout.success', ['orderNumber' => $order->order_number])
-                                   ->with('error', 'Order created but payment session failed. Please contact support.');
-                }
-            }
-        }
-
-    } catch (\Exception $e) {
-        DB::rollback();
-        Log::error('❌ Checkout error occurred', [
-            'error_message' => $e->getMessage(),
-            'error_file' => $e->getFile(),
-            'error_line' => $e->getLine(),
-            'trace' => $e->getTraceAsString()
-        ]);
-        
-        if ($request->ajax()) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Failed to process checkout: ' . $e->getMessage(),
-                'debug_info' => config('app.debug') ? [
-                    'file' => $e->getFile(),
-                    'line' => $e->getLine()
-                ] : null
-            ], 500);
-        } else {
-            return back()->withInput()->with('error', 'Failed to process checkout: ' . $e->getMessage());
-        }
-    }
-}
-
-    private function createMidtransPayment($order, $cartItems, $request)
-{
-    try {
-        Log::info('Creating Midtrans payment', [
-            'order_number' => $order->order_number,
-            'total_amount' => $order->total_amount
-        ]);
-
-        // Prepare item details for Midtrans
-        $itemDetails = [];
-        
-        foreach ($cartItems as $item) {
-            $itemDetails[] = [
-                'id' => $item['id'],
-                'price' => (int) $item['price'],
-                'quantity' => (int) $item['quantity'],
-                'name' => $item['name']
-            ];
-        }
-        
-        // Add shipping as item
-        if ($order->shipping_cost > 0) {
-            $itemDetails[] = [
-                'id' => 'shipping',
-                'price' => (int) $order->shipping_cost,
-                'quantity' => 1,
-                'name' => 'Shipping Cost - ' . $order->shipping_method
-            ];
-        }
-        
-        // Add tax as item
-        if ($order->tax_amount > 0) {
-            $itemDetails[] = [
-                'id' => 'tax',
-                'price' => (int) $order->tax_amount,
-                'quantity' => 1,
-                'name' => 'Tax (PPN 11%)'
-            ];
-        }
-
-        // Prepare order data for Midtrans
-        $midtransOrder = [
-            'order_id' => $order->order_number,
-            'gross_amount' => (int) $order->total_amount,
-            'customer' => [
-                'first_name' => $request->first_name,
-                'last_name' => $request->last_name,
-                'email' => $request->email,
-                'phone' => $request->phone
-            ],
-            'billing_address' => [
-                'address' => $request->address,
-                'city' => $request->destination_label,
-                'postal_code' => $request->postal_code
-            ],
-            'shipping_address' => [
-                'address' => $request->address,
-                'city' => $request->destination_label,
-                'postal_code' => $request->postal_code
-            ],
-            'items' => $itemDetails
-        ];
-
-        Log::info('Midtrans order data prepared', $midtransOrder);
-
-        $response = $this->midtransService->createSnapToken($midtransOrder);
-        
-        Log::info('Midtrans response received', $response);
-        
-        if ($response && isset($response['token'])) {
-            // Save snap token to order
-            $order->update(['snap_token' => $response['token']]);
-            
-            Log::info('Midtrans Snap Token created successfully', [
-                'order_number' => $order->order_number,
-                'snap_token' => $response['token']
-            ]);
-            
-            return $response['token'];
-        }
-
-        Log::error('Failed to create Midtrans Snap Token', [
-            'order_number' => $order->order_number,
-            'response' => $response
-        ]);
-
-        return null;
-
-    } catch (\Exception $e) {
-        Log::error('Midtrans payment creation error: ' . $e->getMessage(), [
-            'order_number' => $order->order_number,
-            'trace' => $e->getTraceAsString()
-        ]);
-        return null;
-    }
-}
-
+    // Keep ALL payment methods exactly the same as working version
     public function payment($orderNumber)
     {
+        Log::info('Payment page accessed', ['order_number' => $orderNumber]);
+        
         $order = Order::with('orderItems.product')
                      ->where('order_number', $orderNumber)
                      ->firstOrFail();
         
-        if ($order->payment_status !== 'pending') {
+        if ($order->status === 'paid') {
             return redirect()->route('checkout.success', ['orderNumber' => $orderNumber]);
         }
-
+        
+        if ($order->payment_method === 'cod') {
+            return redirect()->route('checkout.success', ['orderNumber' => $orderNumber]);
+        }
+        
         $snapToken = session('snap_token') ?: $order->snap_token;
+        
+        if (!$snapToken && $order->status === 'pending') {
+            $cartItems = collect();
+            foreach ($order->orderItems as $item) {
+                $cartItems->push([
+                    'id' => $item->product_id,
+                    'name' => $item->product_name,
+                    'price' => $item->product_price,
+                    'quantity' => $item->quantity,
+                    'subtotal' => $item->total_price
+                ]);
+            }
+            
+            $simulatedRequest = (object) [
+                'first_name' => explode(' ', $order->customer_name)[0],
+                'last_name' => explode(' ', $order->customer_name, 2)[1] ?? '',
+                'email' => $order->customer_email,
+                'phone' => $order->customer_phone,
+                'address' => $order->shipping_address,
+                'destination_label' => $order->shipping_destination_label,
+                'postal_code' => $order->shipping_postal_code,
+                'payment_method' => $order->payment_method
+            ];
+            
+            $snapToken = $this->createMidtransPayment($order, $cartItems, $simulatedRequest);
+            
+            if ($snapToken) {
+                $order->update(['snap_token' => $snapToken]);
+            }
+        }
         
         if (!$snapToken) {
             return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
@@ -1045,63 +1555,250 @@ public function store(Request $request)
         if ($orderNumber) {
             $order = Order::where('order_number', $orderNumber)->first();
             
-            if ($order) {
-                // Update payment status (will be confirmed by webhook)
-                $order->update(['payment_status' => 'processing']);
-                
-                return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
-                               ->with('success', 'Payment completed! We are processing your order.');
+            if ($order && $order->status === 'pending') {
+                $order->update(['status' => 'paid']);
             }
+            
+            return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
+                           ->with('success', 'Payment completed! We are processing your order.');
         }
         
         return redirect()->route('home')->with('success', 'Payment completed successfully!');
     }
 
-    public function paymentNotification(Request $request)
+    public function paymentPending(Request $request)
+    {
+        $orderNumber = $request->get('order_id');
+        
+        if ($orderNumber) {
+            return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
+                           ->with('warning', 'Payment is being processed. You will receive confirmation shortly.');
+        }
+        
+        return redirect()->route('home')->with('warning', 'Payment is being processed.');
+    }
+
+    public function paymentError(Request $request)
+    {
+        $orderNumber = $request->get('order_id');
+        
+        if ($orderNumber) {
+            return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
+                           ->with('error', 'Payment failed. Please try again or contact support.');
+        }
+        
+        return redirect()->route('home')->with('error', 'Payment failed.');
+    }
+
+    public function paymentFinish(Request $request)
+    {
+        $orderNumber = $request->get('order_id');
+        
+        if ($orderNumber) {
+            return redirect()->route('checkout.payment-success', ['order_id' => $orderNumber]);
+        }
+        
+        return redirect()->route('home')->with('success', 'Payment completed successfully!');
+    }
+
+    public function paymentUnfinish(Request $request)
+    {
+        $orderNumber = $request->get('order_id');
+        
+        if ($orderNumber) {
+            return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
+                           ->with('warning', 'Payment was not completed. You can retry payment anytime.');
+        }
+        
+        return redirect()->route('home')->with('warning', 'Payment pending.');
+    }
+
+    public function getPaymentStatus($orderNumber)
     {
         try {
-            $notification = $this->midtransService->handleNotification($request->all());
+            $order = Order::where('order_number', $orderNumber)->first();
             
-            if ($notification) {
-                $order = Order::where('order_number', $notification['order_id'])->first();
-                
-                if ($order) {
-                    $order->update([
-                        'payment_status' => $notification['payment_status'],
-                        'payment_response' => json_encode($notification['raw_notification'])
-                    ]);
-                    
-                    // Update order status based on payment
-                    if ($notification['payment_status'] === 'paid') {
-                        $order->update(['order_status' => 'confirmed']);
-                    } elseif (in_array($notification['payment_status'], ['failed', 'cancelled'])) {
-                        $order->update(['order_status' => 'cancelled']);
-                        
-                        // Restore stock
-                        foreach ($order->orderItems as $item) {
-                            $product = Product::find($item->product_id);
-                            if ($product) {
-                                $product->increment('stock_quantity', $item->quantity);
-                            }
-                        }
-                    }
-                    
-                    Log::info('Payment notification processed', [
-                        'order_number' => $notification['order_id'],
-                        'payment_status' => $notification['payment_status']
-                    ]);
-                }
+            if (!$order) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order not found'
+                ], 404);
             }
             
-            return response()->json(['status' => 'success']);
+            return response()->json([
+                'success' => true,
+                'order_number' => $order->order_number,
+                'status' => $order->status,
+                'total_amount' => $order->total_amount,
+                'created_at' => $order->created_at,
+            ]);
             
         } catch (\Exception $e) {
-            Log::error('Payment notification error: ' . $e->getMessage());
-            return response()->json(['status' => 'error'], 500);
+            Log::error('Error getting payment status: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get payment status'
+            ], 500);
         }
     }
 
+    public function retryPayment($orderNumber)
+    {
+        try {
+            $order = Order::where('order_number', $orderNumber)->first();
+            
+            if (!$order) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order not found'
+                ], 404);
+            }
+            
+            if ($order->status === 'paid') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order already paid'
+                ], 400);
+            }
+            
+            $cartItems = collect();
+            foreach ($order->orderItems as $item) {
+                $cartItems->push([
+                    'id' => $item->product_id,
+                    'name' => $item->product_name,
+                    'price' => $item->product_price,
+                    'quantity' => $item->quantity,
+                    'subtotal' => $item->total_price
+                ]);
+            }
+            
+            $simulatedRequest = (object) [
+                'first_name' => explode(' ', $order->customer_name)[0],
+                'last_name' => explode(' ', $order->customer_name, 2)[1] ?? '',
+                'email' => $order->customer_email,
+                'phone' => $order->customer_phone,
+                'address' => $order->shipping_address,
+                'destination_label' => $order->shipping_destination_label,
+                'postal_code' => $order->shipping_postal_code,
+                'payment_method' => $order->payment_method
+            ];
+            
+            $snapToken = $this->createMidtransPayment($order, $cartItems, $simulatedRequest);
+            
+            if ($snapToken) {
+                $order->update(['snap_token' => $snapToken]);
+                
+                return response()->json([
+                    'success' => true,
+                    'snap_token' => $snapToken,
+                    'order_number' => $order->order_number,
+                    'message' => 'Payment session created successfully'
+                ]);
+            }
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create payment session'
+            ], 500);
+            
+        } catch (\Exception $e) {
+            Log::error('Error retrying payment: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retry payment'
+            ], 500);
+        }
+    }
 
+    public function paymentNotification(Request $request)
+    {
+        try {
+            Log::info('=== MIDTRANS WEBHOOK RECEIVED ===', [
+                'timestamp' => now()->toISOString(),
+                'payload' => $request->all(),
+                'order_id' => $request->get('order_id'),
+                'transaction_status' => $request->get('transaction_status')
+            ]);
+            
+            $notification = $this->midtransService->handleNotification($request->all());
+            
+            if (!$notification) {
+                return response()->json([
+                    'status' => 'failed', 
+                    'message' => 'Invalid notification'
+                ], 400);
+            }
+
+            $order = Order::where('order_number', $notification['order_id'])->first();
+            
+            if (!$order) {
+                return response()->json([
+                    'status' => 'success', 
+                    'message' => 'Order not found but notification received'
+                ]);
+            }
+
+            $oldStatus = $order->status;
+            $newStatus = $this->mapMidtransToOrderStatus(
+                $notification['payment_status'] ?? 'unknown',
+                $notification['transaction_status'] ?? 'unknown',
+                $notification['fraud_status'] ?? 'accept'
+            );
+            
+            $order->update([
+                'status' => $newStatus,
+                'payment_response' => json_encode($notification['raw_notification'] ?? $request->all())
+            ]);
+            
+            Log::info('Order status updated', [
+                'order_number' => $notification['order_id'],
+                'old_status' => $oldStatus,
+                'new_status' => $newStatus
+            ]);
+            
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Notification processed successfully'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Webhook processing error: ' . $e->getMessage());
+            
+            return response()->json([
+                'status' => 'error', 
+                'message' => 'Processing failed'
+            ], 200);
+        }
+    }
+
+    private function mapMidtransToOrderStatus($paymentStatus, $transactionStatus, $fraudStatus = 'accept')
+    {
+        if ($fraudStatus === 'challenge') {
+            return 'pending';
+        }
+        
+        if ($fraudStatus === 'deny') {
+            return 'cancelled';
+        }
+
+        switch ($paymentStatus) {
+            case 'paid':
+                return 'paid';
+            case 'pending':
+                return 'pending';
+            case 'failed':
+            case 'cancelled':
+                return 'cancelled';
+            case 'refunded':
+                return 'refund';
+            case 'challenge':
+                return 'pending';
+            default:
+                return 'pending';
+        }
+    }
 
     public function success($orderNumber)
     {
@@ -1110,50 +1807,5 @@ public function store(Request $request)
                      ->firstOrFail();
         
         return view('frontend.checkout.success', compact('order'));
-    }
-
-    // Other methods remain the same...
-    private function getCartItems($cart)
-    {
-        $cartItems = collect();
-        
-        foreach ($cart as $productId => $item) {
-            if (!is_numeric($productId)) continue;
-
-            $product = Product::where('id', $productId)->where('is_active', true)->first();
-            if (!$product) continue;
-
-            $quantity = isset($item['quantity']) ? (int) $item['quantity'] : 1;
-            if ($quantity <= 0) continue;
-
-            $price = (float) ($product->sale_price ?? $product->price);
-            if ($price <= 0) continue;
-
-            $cartItems->push([
-                'id' => (int) $product->id,
-                'name' => $product->name,
-                'price' => $price,
-                'quantity' => $quantity,
-                'subtotal' => $price * $quantity,
-                'weight' => $product->weight ?? 300,
-                'image' => $product->featured_image ?? ($product->images[0] ?? null),
-                'slug' => $product->slug,
-                'sku' => $product->sku ?? ''
-            ]);
-        }
-        
-        return $cartItems;
-    }
-
-    private function calculateTotalWeight($cartItems)
-    {
-        $totalWeight = 0;
-        
-        foreach ($cartItems as $item) {
-            $itemWeight = $item['weight'] ?? 300;
-            $totalWeight += $itemWeight * $item['quantity'];
-        }
-        
-        return max($totalWeight, 1000);
     }
 }

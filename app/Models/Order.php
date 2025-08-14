@@ -17,27 +17,27 @@ class Order extends Model
         'customer_name',
         'customer_email',
         'customer_phone',
-        'status',
-        'order_status',
+        'status', // Single status field
         'subtotal',
         'tax_amount',
-        'shipping_cost', // Updated from shipping_amount to match migration
+        'shipping_cost',
         'discount_amount',
         'total_amount',
         'currency',
         'shipping_address',
-        'shipping_destination_id', // NEW: For RajaOngkir V2
-        'shipping_destination_label', // NEW: For RajaOngkir V2
-        'shipping_postal_code', // NEW: For RajaOngkir V2
-        'shipping_method', // NEW: For shipping method
+        'shipping_destination_id',
+        'shipping_destination_label',
+        'shipping_postal_code',
+        'shipping_method',
         'billing_address',
         'store_origin',
         'payment_method',
-        'payment_status',
+                'coupon_id',        // ADDED
+        'coupon_code',      // ADDED
         'payment_token',
         'payment_url',
-        'snap_token', // NEW: For Midtrans Snap
-        'payment_response', // NEW: For Midtrans webhook data
+        'snap_token',
+        'payment_response',
         'tracking_number',
         'shipped_at',
         'delivered_at',
@@ -48,13 +48,13 @@ class Order extends Model
     protected $casts = [
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
-        'shipping_cost' => 'decimal:2', // Updated from shipping_amount
+        'shipping_cost' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
         'shipping_address' => 'array',
         'billing_address' => 'array',
         'store_origin' => 'array',
-        'payment_response' => 'array', // NEW: For Midtrans data
+        'payment_response' => 'array',
         'meta_data' => 'array',
         'shipped_at' => 'datetime',
         'delivered_at' => 'datetime',
@@ -141,77 +141,103 @@ class Order extends Model
     }
 
     // =====================================
-    // STATUS METHODS
+    // STATUS METHODS - UPDATED FOR SINGLE STATUS
     // =====================================
 
     public function canBeCancelled()
     {
-        return in_array($this->payment_status, ['pending', 'failed']) &&
-               in_array($this->order_status, ['pending', 'confirmed']);
+        return in_array($this->status, ['pending']);
     }
 
     public function isCompleted()
     {
-        return $this->payment_status === 'paid' && 
-               in_array($this->order_status, ['shipped', 'delivered']);
+        return in_array($this->status, ['delivered']);
     }
 
     public function isPaid()
     {
-        return $this->payment_status === 'paid';
+        return $this->status === 'paid';
     }
 
     public function isPending()
     {
-        return $this->payment_status === 'pending';
+        return $this->status === 'pending';
+    }
+
+    public function isProcessing()
+    {
+        return $this->status === 'processing';
+    }
+
+    public function isShipped()
+    {
+        return $this->status === 'shipped';
+    }
+
+    public function isDelivered()
+    {
+        return $this->status === 'delivered';
+    }
+
+    public function isCancelled()
+    {
+        return $this->status === 'cancelled';
+    }
+
+    public function isRefunded()
+    {
+        return $this->status === 'refund';
     }
 
     // =====================================
-    // STATUS COLORS FOR UI
+    // STATUS COLORS FOR UI - UPDATED
     // =====================================
-
-    public function getPaymentStatusColorAttribute()
-    {
-        return match($this->payment_status) {
-            'pending' => 'yellow',
-            'paid' => 'green',
-            'failed' => 'red',
-            'cancelled' => 'gray',
-            'processing' => 'blue',
-            'challenge' => 'orange',
-            default => 'gray'
-        };
-    }
-
-    public function getOrderStatusColorAttribute()
-    {
-        return match($this->order_status) {
-            'pending' => 'yellow',
-            'confirmed' => 'blue',
-            'processing' => 'indigo',
-            'shipped' => 'purple',
-            'delivered' => 'green',
-            'cancelled' => 'red',
-            default => 'gray'
-        };
-    }
 
     public function getStatusColorAttribute()
     {
         return match($this->status) {
             'pending' => 'yellow',
-            'confirmed' => 'blue',
-            'processing' => 'indigo',
+            'paid' => 'green',
+            'processing' => 'blue',
             'shipped' => 'purple',
             'delivered' => 'green',
             'cancelled' => 'red',
-            'completed' => 'green',
+            'refund' => 'gray',
             default => 'gray'
         };
     }
 
+    public function getStatusBadgeAttribute()
+    {
+        $colors = [
+            'pending' => 'bg-yellow-100 text-yellow-800',
+            'paid' => 'bg-green-100 text-green-800',
+            'processing' => 'bg-blue-100 text-blue-800',
+            'shipped' => 'bg-purple-100 text-purple-800',
+            'delivered' => 'bg-green-100 text-green-800',
+            'cancelled' => 'bg-red-100 text-red-800',
+            'refund' => 'bg-gray-100 text-gray-800',
+        ];
+
+        return $colors[$this->status] ?? 'bg-gray-100 text-gray-800';
+    }
+
+    public function getStatusIconAttribute()
+    {
+        return match($this->status) {
+            'pending' => '⏳',
+            'paid' => '✅',
+            'processing' => '🔄',
+            'shipped' => '🚚',
+            'delivered' => '📦',
+            'cancelled' => '❌',
+            'refund' => '💰',
+            default => '❓'
+        };
+    }
+
     // =====================================
-    // SCOPES
+    // SCOPES - UPDATED FOR SINGLE STATUS
     // =====================================
 
     public function scopePending($query)
@@ -221,22 +247,37 @@ class Order extends Model
 
     public function scopePaid($query)
     {
-        return $query->where('payment_status', 'paid');
+        return $query->where('status', 'paid');
+    }
+
+    public function scopeProcessing($query)
+    {
+        return $query->where('status', 'processing');
+    }
+
+    public function scopeShipped($query)
+    {
+        return $query->where('status', 'shipped');
+    }
+
+    public function scopeDelivered($query)
+    {
+        return $query->where('status', 'delivered');
+    }
+
+    public function scopeCancelled($query)
+    {
+        return $query->where('status', 'cancelled');
+    }
+
+    public function scopeRefunded($query)
+    {
+        return $query->where('status', 'refund');
     }
 
     public function scopeRecent($query)
     {
         return $query->orderBy('created_at', 'desc');
-    }
-
-    public function scopeByPaymentStatus($query, $status)
-    {
-        return $query->where('payment_status', $status);
-    }
-
-    public function scopeByOrderStatus($query, $status)
-    {
-        return $query->where('order_status', $status);
     }
 
     public function scopeByStatus($query, $status)
@@ -320,43 +361,193 @@ class Order extends Model
     }
 
     // =====================================
-    // STATIC HELPER METHODS
+    // STATIC HELPER METHODS - UPDATED
     // =====================================
-
-    public static function getPaymentStatuses()
-    {
-        return [
-            'pending' => 'Pending',
-            'paid' => 'Paid',
-            'failed' => 'Failed',
-            'cancelled' => 'Cancelled',
-            'processing' => 'Processing',
-            'challenge' => 'Challenge'
-        ];
-    }
-
-    public static function getOrderStatuses()
-    {
-        return [
-            'pending' => 'Pending',
-            'confirmed' => 'Confirmed',
-            'processing' => 'Processing',
-            'shipped' => 'Shipped',
-            'delivered' => 'Delivered',
-            'cancelled' => 'Cancelled'
-        ];
-    }
 
     public static function getStatuses()
     {
         return [
             'pending' => 'Pending',
-            'confirmed' => 'Confirmed',
+            'paid' => 'Paid',
             'processing' => 'Processing',
             'shipped' => 'Shipped',
             'delivered' => 'Delivered',
-            'completed' => 'Completed',
-            'cancelled' => 'Cancelled'
+            'cancelled' => 'Cancelled',
+            'refund' => 'Refund'
         ];
+    }
+
+    public static function getStatusesWithIcons()
+    {
+        return [
+            'pending' => ['label' => 'Pending', 'icon' => '⏳', 'color' => 'yellow'],
+            'paid' => ['label' => 'Paid', 'icon' => '✅', 'color' => 'green'],
+            'processing' => ['label' => 'Processing', 'icon' => '🔄', 'color' => 'blue'],
+            'shipped' => ['label' => 'Shipped', 'icon' => '🚚', 'color' => 'purple'],
+            'delivered' => ['label' => 'Delivered', 'icon' => '📦', 'color' => 'green'],
+            'cancelled' => ['label' => 'Cancelled', 'icon' => '❌', 'color' => 'red'],
+            'refund' => ['label' => 'Refund', 'icon' => '💰', 'color' => 'gray']
+        ];
+    }
+
+    // =====================================
+    // STATUS TRANSITION METHODS
+    // =====================================
+
+    public function canTransitionTo($newStatus)
+    {
+        $allowedTransitions = [
+            'pending' => ['paid', 'cancelled'],
+            'paid' => ['processing', 'cancelled'],
+            'processing' => ['shipped', 'cancelled'],
+            'shipped' => ['delivered', 'cancelled'],
+            'delivered' => ['refund'],
+            'cancelled' => [], // Cannot transition from cancelled
+            'refund' => [] // Cannot transition from refund
+        ];
+
+        return in_array($newStatus, $allowedTransitions[$this->status] ?? []);
+    }
+
+    public function transitionTo($newStatus, $notes = null)
+    {
+        if (!$this->canTransitionTo($newStatus)) {
+            throw new \Exception("Cannot transition from {$this->status} to {$newStatus}");
+        }
+
+        $oldStatus = $this->status;
+        $this->status = $newStatus;
+
+        // Add transition notes
+        if ($notes) {
+            $this->notes = ($this->notes ? $this->notes . "\n" : '') . 
+                          "[" . now()->format('Y-m-d H:i:s') . "] Status changed from {$oldStatus} to {$newStatus}: {$notes}";
+        }
+
+        // Handle specific status transitions
+        switch ($newStatus) {
+            case 'shipped':
+                if (!$this->shipped_at) {
+                    $this->shipped_at = now();
+                }
+                break;
+                
+            case 'delivered':
+                if (!$this->delivered_at) {
+                    $this->delivered_at = now();
+                }
+                break;
+        }
+
+        $this->save();
+
+        \Illuminate\Support\Facades\Log::info('Order status transition', [
+            'order_number' => $this->order_number,
+            'old_status' => $oldStatus,
+            'new_status' => $newStatus,
+            'notes' => $notes
+        ]);
+
+        return $this;
+    }
+
+    // =====================================
+    // PAYMENT HELPER METHODS - UPDATED
+    // =====================================
+
+    public function requiresPayment()
+    {
+        return $this->payment_method !== 'cod' && $this->status === 'pending';
+    }
+
+    public function canRetryPayment()
+    {
+        return $this->payment_method !== 'cod' && 
+               in_array($this->status, ['pending', 'cancelled']) &&
+               !empty($this->snap_token);
+    }
+
+    public function getPaymentStatusText()
+    {
+        if ($this->payment_method === 'cod') {
+            return match($this->status) {
+                'pending' => 'COD - Pending',
+                'paid' => 'COD - Completed',
+                'processing' => 'COD - Processing',
+                'shipped' => 'COD - Shipped',
+                'delivered' => 'COD - Delivered',
+                'cancelled' => 'COD - Cancelled',
+                default => 'COD - ' . ucfirst($this->status)
+            };
+        }
+
+        return match($this->status) {
+            'pending' => 'Payment Required',
+            'paid' => 'Payment Completed',
+            'processing' => 'Paid - Processing',
+            'shipped' => 'Paid - Shipped',
+            'delivered' => 'Paid - Delivered',
+            'cancelled' => 'Payment Cancelled',
+            'refund' => 'Refunded',
+            default => ucfirst($this->status)
+        };
+    }
+
+    // =====================================
+    // ADMIN HELPER METHODS
+    // =====================================
+
+    public function getAdminActions()
+    {
+        $actions = [];
+        
+        switch ($this->status) {
+            case 'pending':
+                if ($this->payment_method !== 'cod') {
+                    $actions[] = ['action' => 'mark_paid', 'label' => 'Mark as Paid', 'color' => 'success'];
+                }
+                $actions[] = ['action' => 'cancel', 'label' => 'Cancel Order', 'color' => 'danger'];
+                break;
+                
+            case 'paid':
+                $actions[] = ['action' => 'process', 'label' => 'Start Processing', 'color' => 'primary'];
+                $actions[] = ['action' => 'cancel', 'label' => 'Cancel Order', 'color' => 'danger'];
+                break;
+                
+            case 'processing':
+                $actions[] = ['action' => 'ship', 'label' => 'Mark as Shipped', 'color' => 'info'];
+                $actions[] = ['action' => 'cancel', 'label' => 'Cancel Order', 'color' => 'danger'];
+                break;
+                
+            case 'shipped':
+                $actions[] = ['action' => 'deliver', 'label' => 'Mark as Delivered', 'color' => 'success'];
+                break;
+                
+            case 'delivered':
+                $actions[] = ['action' => 'refund', 'label' => 'Process Refund', 'color' => 'warning'];
+                break;
+        }
+        
+        return $actions;
+    }
+
+    // =====================================
+    // STATISTICS METHODS
+    // =====================================
+
+    public static function getStatusCounts()
+    {
+        return static::selectRaw('status, COUNT(*) as count')
+                    ->groupBy('status')
+                    ->pluck('count', 'status')
+                    ->toArray();
+    }
+
+    public static function getRevenueByStatus()
+    {
+        return static::selectRaw('status, SUM(total_amount) as revenue')
+                    ->groupBy('status')
+                    ->pluck('revenue', 'status')
+                    ->toArray();
     }
 }

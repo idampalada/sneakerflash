@@ -54,9 +54,40 @@
                              data-wishlist-id="{{ $wishlist->id }}">
                             <div class="relative aspect-square bg-gray-50 overflow-hidden">
                                 @if($wishlist->product->images && count($wishlist->product->images) > 0)
-                                    <img src="{{ Storage::url($wishlist->product->images[0]) }}" 
+                                    @php
+                                        // ✅ FIXED: Handle both URL and storage images
+                                        $imagePath = $wishlist->product->images[0];
+                                        $imageUrl = '';
+                                        
+                                        // Case 1: Already a full URL
+                                        if (filter_var($imagePath, FILTER_VALIDATE_URL)) {
+                                            $imageUrl = $imagePath;
+                                        }
+                                        // Case 2: Storage path starting with /storage/
+                                        elseif (str_starts_with($imagePath, '/storage/')) {
+                                            $imageUrl = config('app.url') . $imagePath;
+                                        }
+                                        // Case 3: Relative storage path (products/filename.jpg)
+                                        elseif (str_starts_with($imagePath, 'products/')) {
+                                            $imageUrl = config('app.url') . '/storage/' . $imagePath;
+                                        }
+                                        // Case 4: Asset path
+                                        elseif (str_starts_with($imagePath, 'assets/') || str_starts_with($imagePath, 'images/')) {
+                                            $imageUrl = asset($imagePath);
+                                        }
+                                        // Case 5: Filename only - assume in products folder
+                                        elseif (!str_contains($imagePath, '/')) {
+                                            $imageUrl = config('app.url') . '/storage/products/' . $imagePath;
+                                        }
+                                        // Case 6: Generic fallback
+                                        else {
+                                            $imageUrl = config('app.url') . '/storage/' . ltrim($imagePath, '/');
+                                        }
+                                    @endphp
+                                    <img src="{{ $imageUrl }}" 
                                          alt="{{ $wishlist->product->name }}"
-                                         class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                                         class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                         onerror="this.src='{{ asset('images/default-product.png') }}'">
                                 @else
                                     <div class="w-full h-full flex items-center justify-center bg-gray-100">
                                         <i class="fas fa-shoe-prints text-4xl text-gray-300"></i>

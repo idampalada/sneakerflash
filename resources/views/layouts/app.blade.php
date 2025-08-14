@@ -404,65 +404,87 @@
         }
 
         /* Image Carousel Styles */
-        .carousel-container {
-            position: relative;
-            width: 100%;
-            height: 250px;
-            overflow: hidden;
-            background: #f8f9fa;
-        }
+        /* Image Carousel Styles - Updated with smaller height */
+.carousel-container {
+    position: relative;
+    width: 100%;
+    height: 180px; /* Reduced from 250px */
+    overflow: hidden;
+    background: #f8f9fa;
+}
 
-        .carousel-slide {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            opacity: 0;
-            transition: opacity 0.5s ease-in-out;
-        }
+.carousel-slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 0.5s ease-in-out;
+}
 
-        .carousel-slide.active {
-            opacity: 1;
-        }
+.carousel-slide.active {
+    opacity: 1;
+}
 
-        .carousel-slide img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
+.carousel-slide img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
 
-        .carousel-nav {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            background: rgba(255, 255, 255, 0.9);
-            border: none;
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 18px;
-            color: #333;
-            transition: all 0.3s ease;
-            z-index: 10;
-        }
+.carousel-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255, 255, 255, 0.9);
+    border: none;
+    width: 40px; /* Reduced from 50px */
+    height: 40px; /* Reduced from 50px */
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 16px; /* Reduced from 18px */
+    color: #333;
+    transition: all 0.3s ease;
+    z-index: 10;
+}
 
-        .carousel-nav:hover {
-            background: rgba(255, 255, 255, 1);
-            transform: translateY(-50%) scale(1.1);
-        }
+.carousel-nav:hover {
+    background: rgba(255, 255, 255, 1);
+    transform: translateY(-50%) scale(1.1);
+}
 
-        .carousel-nav.prev {
-            left: 20px;
-        }
+.carousel-nav.prev {
+    left: 15px; /* Reduced from 20px */
+}
 
-        .carousel-nav.next {
-            right: 20px;
-        }
+.carousel-nav.next {
+    right: 15px; /* Reduced from 20px */
+}
+
+/* Mobile Styles */
+@media (max-width: 768px) {
+    .carousel-container {
+        height: 140px; /* Reduced from 180px */
+    }
+    
+    .carousel-nav {
+        width: 35px; /* Reduced from 40px */
+        height: 35px; /* Reduced from 40px */
+        font-size: 14px; /* Reduced from 16px */
+    }
+    
+    .carousel-nav.prev {
+        left: 10px;
+    }
+    
+    .carousel-nav.next {
+        right: 10px;
+    }
+}
 
         /* Mobile Styles */
         .mobile-menu-overlay {
@@ -734,7 +756,7 @@
             <div class="mobile-menu-content">
                 <a href="/products?category=mens" class="mobile-menu-item">MENS</a>
                 <a href="/products?category=womens" class="mobile-menu-item">WOMENS</a>
-                <a href="/products?category=kids" class="mobile-menu-item">KIDS</a>
+                <a href="/products?category=unisex" class="mobile-menu-item">UNISEX</a>
                 <a href="/products?brands[]=Nike" class="mobile-menu-item">NIKE</a>
                 <a href="/products?brands[]=Adidas" class="mobile-menu-item">ADIDAS</a>
                 <a href="/products?category=accessories" class="mobile-menu-item">ACCESSORIES</a>
@@ -880,11 +902,15 @@
                         <i class="fas fa-chevron-down dropdown-arrow"></i>
                     </button>
                     <div class="nav-dropdown" :class="{ 'show': isDropdownActive('mens') }">
+                        <!-- FOOTWEAR Section -->
                         <a href="/products?category=mens&section=footwear" class="dropdown-header-link">FOOTWEAR</a>
                         <a href="/products?category=mens&type=lifestyle" class="dropdown-item">Lifestyle/Casual</a>
                         <a href="/products?category=mens&type=running" class="dropdown-item">Running</a>
                         <a href="/products?category=mens&type=training" class="dropdown-item">Training</a>
                         <a href="/products?category=mens&type=basketball" class="dropdown-item">Basketball</a>
+                        
+                        <!-- APPAREL Section -->
+                        <a href="/products?category=mens&type=apparel" class="dropdown-header-link">APPAREL</a>
                     </div>
                 </div>
 
@@ -897,18 +923,36 @@
                         <i class="fas fa-chevron-down dropdown-arrow"></i>
                     </button>
                     <div class="nav-dropdown" :class="{ 'show': isDropdownActive('womens') }">
+                        <!-- FOOTWEAR Section -->
                         <a href="/products?category=womens&section=footwear" class="dropdown-header-link">FOOTWEAR</a>
                         <a href="/products?category=womens&type=lifestyle" class="dropdown-item">Lifestyle/Casual</a>
                         <a href="/products?category=womens&type=running" class="dropdown-item">Running</a>
                         <a href="/products?category=womens&type=training" class="dropdown-item">Training</a>
+                        
+                        <!-- APPAREL Section -->
+                        <a href="/products?category=womens&type=apparel" class="dropdown-header-link">APPAREL</a>
                     </div>
                 </div>
 
-                <!-- KIDS -->
+                <!-- UNISEX (Updated from KIDS) -->
                 <div class="nav-item-container">
-                    <a href="/products?category=kids" class="nav-simple-link">
-                        KIDS
-                    </a>
+                    <button @click="toggleDropdown('unisex')" 
+                            class="nav-main-btn" 
+                            :class="{ 'active': isDropdownActive('unisex') }">
+                        UNISEX
+                        <i class="fas fa-chevron-down dropdown-arrow"></i>
+                    </button>
+                    <div class="nav-dropdown" :class="{ 'show': isDropdownActive('unisex') }">
+                        <!-- FOOTWEAR Section -->
+                        <a href="/products?category=unisex&section=footwear" class="dropdown-header-link">FOOTWEAR</a>
+                        <a href="/products?category=unisex&type=lifestyle" class="dropdown-item">Lifestyle/Casual</a>
+                        <a href="/products?category=unisex&type=running" class="dropdown-item">Running</a>
+                        <a href="/products?category=unisex&type=training" class="dropdown-item">Training</a>
+                        <a href="/products?category=unisex&type=basketball" class="dropdown-item">Basketball</a>
+                        
+                        <!-- APPAREL Section -->
+                        <a href="/products?category=unisex&type=apparel" class="dropdown-header-link">APPAREL</a>
+                    </div>
                 </div>
 
                 <!-- BRAND Dropdown -->
@@ -965,7 +1009,7 @@
                     </div>
                 </div>
 
-                <!-- ACCESSORIES Dropdown -->
+                <!-- ACCESSORIES Dropdown (Updated with new product types) -->
                 <div class="nav-item-container">
                     <button @click="toggleDropdown('accessories')" 
                             class="nav-main-btn" 
@@ -974,21 +1018,18 @@
                         <i class="fas fa-chevron-down dropdown-arrow"></i>
                     </button>
                     <div class="nav-dropdown" :class="{ 'show': isDropdownActive('accessories') }">
-                        <a href="/products?category=accessories" class="dropdown-header-link">ACCESSORIES</a>
-                        <a href="/products?category=accessories&type=bag" class="dropdown-item">
-                            <i class="fas fa-shopping-bag mr-2"></i>Bag
+                        <a href="/products?type=accessories" class="dropdown-header-link">ALL ACCESSORIES</a>
+                        <a href="/products?type=bags" class="dropdown-item">
+                            <i class="fas fa-shopping-bag mr-2"></i>Bags
                         </a>
-                        <a href="/products?category=accessories&type=sock" class="dropdown-item">
-                            <i class="fas fa-socks mr-2"></i>Sock
+                        <a href="/products?type=caps" class="dropdown-item">
+                            <i class="fas fa-hat-cowboy mr-2"></i>Caps & Hats
                         </a>
-                        <a href="/products?category=accessories&type=cap" class="dropdown-item">
-                            <i class="fas fa-hat-cowboy mr-2"></i>Cap
+                        <a href="/products?type=apparel" class="dropdown-item">
+                            <i class="fas fa-tshirt mr-2"></i>Apparel
                         </a>
                         <a href="/products?category=accessories&type=cleaner" class="dropdown-item">
-                            <i class="fas fa-spray-can mr-2"></i>Shoe Cleaner
-                        </a>
-                        <a href="/products?category=accessories&type=others" class="dropdown-item">
-                            <i class="fas fa-ellipsis-h mr-2"></i>Others
+                            <i class="fas fa-spray-can mr-2"></i>Shoe Care
                         </a>
                     </div>
                 </div>

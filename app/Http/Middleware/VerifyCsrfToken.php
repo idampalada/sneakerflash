@@ -12,16 +12,22 @@ class VerifyCsrfToken extends Middleware
      * @var array<int, string>
      */
     protected $except = [
-        // Midtrans webhook routes - exclude from CSRF protection
-        'checkout/payment-notification',
-        'midtrans/notification',
-        'webhook/midtrans',
-        'payment/webhook',
+        // Midtrans webhook routes - MUST be excluded from CSRF protection
+        'checkout/payment-notification',        // Primary webhook URL
+        'checkout/payment/notification',        // Alternative webhook URL
+        'midtrans/notification',               // Backup webhook URL
+        'webhook/midtrans',                    // Backup webhook URL
+        'api/midtrans/webhook',               // API webhook URL
         
-        // API routes that might need CSRF exclusion
-        'api/payment/*',
+        // Test endpoints (for debugging)
+        'api/payment/test-webhook',
         
-        // Other webhook endpoints if needed
-        // 'webhook/*',
+        // Other webhook endpoints if needed in future
+        'webhook/*',                          // Wildcard for all webhook routes
+        'api/webhook/*',                      // API webhook routes
+        
+        // Additional patterns for safety
+        '*/payment-notification',             // Any path ending with payment-notification
+        '*/notification',                     // Any notification endpoint
     ];
 }

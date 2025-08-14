@@ -34,6 +34,7 @@ return [
         ],
     ],
 
+    // ✅ FIXED: Midtrans Configuration
     'midtrans' => [
         'merchant_id' => env('MIDTRANS_MERCHANT_ID'),
         'client_key' => env('MIDTRANS_CLIENT_KEY'),
@@ -43,8 +44,9 @@ return [
         'is_3ds' => env('MIDTRANS_IS_3DS', true),
     ],
 
+    // ✅ FIXED: RajaOngkir Configuration
     'rajaongkir' => [
-        'api_key' => env('8MZVaA6pc8c11707407345e5Ad0DK9eU'),
+        'api_key' => env('RAJAONGKIR_API_KEY', '8MZVaA6pc8c11707407345e5Ad0DK9eU'),
         'api_version' => env('RAJAONGKIR_API_VERSION', 'v2'),
         'base_url' => env('RAJAONGKIR_BASE_URL', 'https://rajaongkir.komerce.id/api/v1'),
         'auto_origin' => env('RAJAONGKIR_AUTO_ORIGIN', true),
@@ -64,24 +66,25 @@ return [
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
-'google_maps' => [
-    'api_key' => env('GOOGLE_MAPS_API_KEY'),
-    'default_location' => [
-        'lat' => env('STORE_DEFAULT_LAT', -6.2088),
-        'lng' => env('STORE_DEFAULT_LNG', 106.8456),
-    ],
-    'default_zoom' => env('GOOGLE_MAPS_DEFAULT_ZOOM', 13),
-    'country_restriction' => env('GOOGLE_MAPS_COUNTRY', 'ID'),
-],
 
-'store' => [
-    'name' => env('STORE_NAME', 'SneakerFlash'),
-    'address' => env('STORE_ADDRESS'),
-    'latitude' => env('STORE_LAT'),
-    'longitude' => env('STORE_LNG'),
-    'postal_code' => env('STORE_POSTAL_CODE'),
-    'city' => env('STORE_CITY'),
-    'province' => env('STORE_PROVINCE'),
-    'rajaongkir_location_id' => env('STORE_RAJAONGKIR_LOCATION_ID'),
-],
+    'google_maps' => [
+        'api_key' => env('GOOGLE_MAPS_API_KEY'),
+        'default_location' => [
+            'lat' => env('STORE_DEFAULT_LAT', -6.2088),
+            'lng' => env('STORE_DEFAULT_LNG', 106.8456),
+        ],
+        'default_zoom' => env('GOOGLE_MAPS_DEFAULT_ZOOM', 13),
+        'country_restriction' => env('GOOGLE_MAPS_COUNTRY', 'ID'),
+    ],
+
+    'store' => [
+        'name' => env('STORE_NAME', 'SneakerFlash'),
+        'address' => env('STORE_ADDRESS'),
+        'latitude' => env('STORE_LAT'),
+        'longitude' => env('STORE_LNG'),
+        'postal_code' => env('STORE_POSTAL_CODE'),
+        'city' => env('STORE_CITY'),
+        'province' => env('STORE_PROVINCE'),
+        'rajaongkir_location_id' => env('STORE_RAJAONGKIR_LOCATION_ID'),
+    ],
 ];
