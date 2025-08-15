@@ -433,12 +433,12 @@ Route::prefix('api')->name('api.')->group(function() {
     Route::get('/cart/data', [CartController::class, 'getCartData'])->name('cart.data');
     
     // Coupons/Vouchers - NEW
-    Route::prefix('coupons')->name('coupons.')->group(function() {
-    Route::post('/apply', [\App\Http\Controllers\Frontend\CouponController::class, 'apply'])->name('apply');
-    Route::post('/remove', [\App\Http\Controllers\Frontend\CouponController::class, 'remove'])->name('remove');
-    Route::get('/current', [\App\Http\Controllers\Frontend\CouponController::class, 'current'])->name('current');
-    Route::post('/validate', [\App\Http\Controllers\Frontend\CouponController::class, 'validate'])->name('validate');
-    Route::get('/available', [\App\Http\Controllers\Frontend\CouponController::class, 'available'])->name('available');
+Route::prefix('vouchers')->name('vouchers.')->group(function() {
+    Route::post('/apply', [\App\Http\Controllers\Frontend\VoucherController::class, 'apply'])->name('apply');
+    Route::post('/remove', [\App\Http\Controllers\Frontend\VoucherController::class, 'remove'])->name('remove');
+    Route::get('/current', [\App\Http\Controllers\Frontend\VoucherController::class, 'current'])->name('current');
+    Route::post('/validate', [\App\Http\Controllers\Frontend\VoucherController::class, 'validate'])->name('validate');
+    Route::get('/available', [\App\Http\Controllers\Frontend\VoucherController::class, 'available'])->name('available');
 });
     
     // Checkout & RajaOngkir

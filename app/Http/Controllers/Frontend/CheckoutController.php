@@ -33,7 +33,7 @@ class CheckoutController extends Controller
         $this->rajaOngkirApiKey = config('services.rajaongkir.api_key') ?: env('RAJAONGKIR_API_KEY');
         $this->rajaOngkirBaseUrl = 'https://rajaongkir.komerce.id/api/v1';
         
-        Log::info('RajaOngkir V2 Controller initialized with Address Integration', [
+        Log::info('RajaOngkir V2 Controller initialized with Address Integration + Voucher System', [
             'base_url' => $this->rajaOngkirBaseUrl,
             'api_key_set' => !empty($this->rajaOngkirApiKey),
             'origin_city' => env('STORE_ORIGIN_CITY_NAME', 'Not configured'),
@@ -43,7 +43,7 @@ class CheckoutController extends Controller
     }
 
     /**
-     * Index method with proper cart item handling and coupon info
+     * Index method with proper cart item handling and voucher info
      */
     public function index()
     {
@@ -100,15 +100,15 @@ class CheckoutController extends Controller
             $authenticatedUserEmail = $user->email ?? '';
         }
 
-        // SIMPLE COUPON INFO - Check if there's a coupon in session
-        $appliedCoupon = Session::get('applied_coupon', null);
+        // VOUCHER SYSTEM - Check if there's a voucher in session
+        $appliedVoucher = Session::get('applied_voucher', null);
         $discountAmount = 0;
-        
-        if ($appliedCoupon && isset($appliedCoupon['discount_amount'])) {
-            $discountAmount = (float) $appliedCoupon['discount_amount'];
+
+        if ($appliedVoucher && isset($appliedVoucher['discount_amount'])) {
+            $discountAmount = (float) $appliedVoucher['discount_amount'];
         }
 
-        Log::info('Checkout initialized with Address Integration and Simple Coupon - NO TAX', [
+        Log::info('Checkout initialized with Address Integration and Voucher System - NO TAX', [
             'cart_count' => count($cart),
             'cart_items_count' => $cartItems->count(),
             'subtotal' => $subtotal,
@@ -123,7 +123,7 @@ class CheckoutController extends Controller
             'primary_address_id' => $primaryAddressId,
             'user_email' => $authenticatedUserEmail,
             'tax_removed' => true,
-            'applied_coupon' => $appliedCoupon ? $appliedCoupon['code'] : null
+            'applied_voucher' => $appliedVoucher ? $appliedVoucher['voucher_code'] : null
         ]);
 
         return view('frontend.checkout.index', compact(
@@ -139,7 +139,7 @@ class CheckoutController extends Controller
             'authenticatedUserName',
             'authenticatedUserPhone',
             'authenticatedUserEmail',
-            'appliedCoupon',
+            'appliedVoucher',
             'discountAmount'
         ));
     }
@@ -379,20 +379,20 @@ class CheckoutController extends Controller
     }
 
     /**
-     * CRITICAL FIX: Store method with SIMPLE coupon integration that works
+     * CRITICAL FIX: Store method with VOUCHER integration that works
      */
     public function store(Request $request)
     {
-        Log::info('Checkout request received with address integration and simple coupon - NO TAX', [
+        Log::info('Checkout request received with address integration and voucher system - NO TAX', [
             'payment_method' => $request->payment_method,
             'is_ajax' => $request->ajax(),
             'has_saved_address' => $request->has('saved_address_id'),
             'saved_address_id' => $request->get('saved_address_id'),
-            'applied_coupon_code' => $request->get('applied_coupon_code'),
-            'applied_coupon_discount' => $request->get('applied_coupon_discount')
+            'applied_voucher_code' => $request->get('applied_voucher_code'),
+            'applied_voucher_discount' => $request->get('applied_voucher_discount')
         ]);
 
-        // Validation with address fields and simple coupon data
+        // Validation with address fields and voucher data
         $request->validate([
             'gender' => 'nullable|in:mens,womens,kids',
             'first_name' => 'required|string|max:255',
@@ -429,9 +429,9 @@ class CheckoutController extends Controller
             'save_address' => 'nullable|boolean',
             'set_as_primary' => 'nullable|boolean',
             
-            // SIMPLE coupon validation
-            'applied_coupon_code' => 'nullable|string|max:50',
-            'applied_coupon_discount' => 'nullable|numeric|min:0',
+            // VOUCHER validation
+            'applied_voucher_code' => 'nullable|string|max:50',
+            'applied_voucher_discount' => 'nullable|numeric|min:0',
         ], [
             'privacy_accepted.required' => 'You must accept the privacy policy to continue.',
             'destination_id.required' => 'Please select a delivery location.',
@@ -472,31 +472,31 @@ class CheckoutController extends Controller
             $subtotal = $cartItems->sum('subtotal');
             $shippingCost = (float) $request->shipping_cost;
             
-            // SIMPLE COUPON HANDLING - Get from request or session
+            // VOUCHER HANDLING - Get from request or session
             $discountAmount = 0;
-            $couponInfo = null;
+            $voucherInfo = null;
 
             // Try from request first
-            if ($request->get('applied_coupon_code') && $request->get('applied_coupon_discount')) {
-                $discountAmount = (float) $request->get('applied_coupon_discount');
-                $couponInfo = [
-                    'code' => $request->get('applied_coupon_code'),
+            if ($request->get('applied_voucher_code') && $request->get('applied_voucher_discount')) {
+                $discountAmount = (float) $request->get('applied_voucher_discount');
+                $voucherInfo = [
+                    'voucher_code' => $request->get('applied_voucher_code'),
                     'discount_amount' => $discountAmount,
                     'source' => 'form_data'
                 ];
-                Log::info('🎫 Using coupon data from form submission', $couponInfo);
+                Log::info('🎫 Using voucher data from form submission', $voucherInfo);
             } 
             // Fallback to session
             else {
-                $sessionCoupon = Session::get('applied_coupon', null);
-                if ($sessionCoupon && isset($sessionCoupon['discount_amount'])) {
-                    $discountAmount = (float) $sessionCoupon['discount_amount'];
-                    $couponInfo = [
-                        'code' => $sessionCoupon['code'] ?? 'unknown',
+                $sessionVoucher = Session::get('applied_voucher', null);
+                if ($sessionVoucher && isset($sessionVoucher['discount_amount'])) {
+                    $discountAmount = (float) $sessionVoucher['discount_amount'];
+                    $voucherInfo = [
+                        'voucher_code' => $sessionVoucher['voucher_code'] ?? 'unknown',
                         'discount_amount' => $discountAmount,
                         'source' => 'session'
                     ];
-                    Log::info('🎫 Using coupon data from session', $couponInfo);
+                    Log::info('🎫 Using voucher data from session', $voucherInfo);
                 }
             }
             
@@ -504,13 +504,13 @@ class CheckoutController extends Controller
             $totalAmount = $subtotal + $shippingCost - $discountAmount;
             $totalAmount = max(0, $totalAmount);
 
-            Log::info('💰 Order totals calculated with simple coupon', [
+            Log::info('💰 Order totals calculated with voucher system', [
                 'subtotal' => $subtotal,
                 'shipping_cost' => $shippingCost,
                 'discount_amount' => $discountAmount,
                 'total_amount' => $totalAmount,
-                'coupon_applied' => !empty($couponInfo),
-                'coupon_info' => $couponInfo
+                'voucher_applied' => !empty($voucherInfo),
+                'voucher_info' => $voucherInfo
             ]);
 
             $user = $this->handleUserAccountCreationOrUpdate($request);
@@ -576,10 +576,10 @@ class CheckoutController extends Controller
                         'account_created' => ($request->create_account && !Auth::check()) ? true : false,
                         'existing_user' => Auth::check() ? true : false,
                     ],
-                    // SIMPLE coupon info
-                    'coupon_info' => $couponInfo,
+                    // VOUCHER info
+                    'voucher_info' => $voucherInfo,
                     'checkout_info' => [
-                        'created_via' => 'web_checkout_with_address_integration_no_cod_no_tax_simple_coupon',
+                        'created_via' => 'web_checkout_with_address_integration_no_cod_no_tax_voucher_system',
                         'user_agent' => $request->userAgent(),
                         'ip_address' => $request->ip(),
                         'checkout_timestamp' => now()->toISOString(),
@@ -615,7 +615,7 @@ class CheckoutController extends Controller
 
             $filteredOrderData = array_intersect_key($orderData, array_flip($existingColumns));
 
-            Log::info('Creating order with address integration - Online payment only - NO TAX + SIMPLE COUPON', [
+            Log::info('Creating order with address integration - Online payment only - NO TAX + VOUCHER SYSTEM', [
                 'order_number' => $orderNumber,
                 'customer_email' => $request->email,
                 'customer_gender' => $request->gender,
@@ -623,13 +623,13 @@ class CheckoutController extends Controller
                 'payment_method' => $request->payment_method,
                 'total_amount' => $totalAmount,
                 'discount_amount' => $discountAmount,
-                'coupon_applied' => !empty($couponInfo),
-                'coupon_code' => $couponInfo['code'] ?? null,
+                'voucher_applied' => !empty($voucherInfo),
+                'voucher_code' => $voucherInfo['voucher_code'] ?? null,
                 'initial_status' => 'pending',
                 'user_id' => $user ? $user->id : null,
                 'account_created' => ($request->create_account && !Auth::check()) ? true : false,
                 'address_used' => $addressData['label'] . ' - ' . $addressData['recipient_name'],
-                'address_saved' => $addressData['address_id'] ? true : false,
+                'address_saved' => !is_null($addressData['address_id']),
                 'tax_amount' => 0
             ]);
 
@@ -673,20 +673,20 @@ class CheckoutController extends Controller
 
             Session::forget('cart');
             
-            // Clear coupon from session after successful order
-            if ($couponInfo) {
-                Session::forget('applied_coupon');
-                Log::info('🎫 Coupon cleared from session after order creation');
+            // Clear voucher from session after successful order
+            if ($voucherInfo) {
+                Session::forget('applied_voucher');
+                Log::info('🎫 Voucher cleared from session after order creation');
             }
 
-            Log::info('Order created successfully with address integration - Online payment only - NO TAX + SIMPLE COUPON', [
+            Log::info('Order created successfully with address integration - Online payment only - NO TAX + VOUCHER SYSTEM', [
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
                 'payment_method' => $request->payment_method,
                 'total_amount' => $totalAmount,
                 'discount_amount' => $discountAmount,
-                'coupon_applied' => !empty($couponInfo),
-                'coupon_code' => $couponInfo['code'] ?? null,
+                'voucher_applied' => !empty($voucherInfo),
+                'voucher_code' => $voucherInfo['voucher_code'] ?? null,
                 'status' => $order->status,
                 'customer_email' => $request->email,
                 'user_id' => $user ? $user->id : null,
@@ -698,7 +698,7 @@ class CheckoutController extends Controller
             ]);
 
             // ALL PAYMENTS NOW GO THROUGH MIDTRANS
-            Log::info('Creating Midtrans payment session - NO TAX + SIMPLE COUPON', [
+            Log::info('Creating Midtrans payment session - NO TAX + VOUCHER SYSTEM', [
                 'order_number' => $order->order_number,
                 'payment_method' => $request->payment_method,
                 'customer_name' => $order->customer_name,
@@ -706,39 +706,48 @@ class CheckoutController extends Controller
                 'discount_applied' => $discountAmount
             ]);
             
-            $snapToken = $this->createMidtransPayment($order, $cartItems, $request);
-            
-            if ($snapToken) {
-                $order->update(['snap_token' => $snapToken]);
-                
-                Log::info('Midtrans token created successfully - NO TAX + SIMPLE COUPON', [
+            $midtrans = $this->createMidtransPayment($order, $cartItems, $request);
+
+            if ($midtrans && isset($midtrans['token'])) {
+                $snapToken   = $midtrans['token'];
+                $redirectUrl = $midtrans['redirect_url'] ?? null;
+
+                // simpan agar bisa dipakai fallback di halaman /payment
+                $order->update([
+                    'snap_token'  => $snapToken,
+                    'payment_url' => $redirectUrl, // kolom ini sudah ada di $existingColumns
+                ]);
+
+                Log::info('Midtrans token created successfully - NO TAX + VOUCHER SYSTEM', [
                     'order_number' => $order->order_number,
                     'snap_token_length' => strlen($snapToken),
-                    'final_amount' => $totalAmount
+                    'final_amount' => $totalAmount,
+                    'redirect_url_present' => !empty($redirectUrl),
                 ]);
 
                 if ($request->ajax() || $request->expectsJson()) {
                     return response()->json([
-                        'success' => true,
-                        'message' => 'Order created successfully. Opening payment gateway...',
-                        'order_number' => $order->order_number,
+                        'success'       => true,
+                        'message'       => 'Order created successfully. Opening payment gateway...',
+                        'order_number'  => $order->order_number,
                         'customer_name' => $order->customer_name,
-                        'snap_token' => $snapToken,
-                        'redirect_url' => route('checkout.payment', ['orderNumber' => $order->order_number])
+                        'snap_token'    => $snapToken,
+                        // ⬇️ kirim hosted URL Midtrans ke frontend (bukan route internal)
+                        'redirect_url'  => $redirectUrl ?: route('checkout.payment', ['orderNumber' => $order->order_number]),
                     ]);
                 }
-                
-                return redirect()->route('checkout.payment', ['orderNumber' => $order->order_number])
-                               ->with('snap_token', $snapToken);
-                               
+
+                return redirect()
+                    ->route('checkout.payment', ['orderNumber' => $order->order_number])
+                    ->with('snap_token', $snapToken);
             } else {
-                Log::error('Failed to create Midtrans token - NO TAX + SIMPLE COUPON', [
+                Log::error('Failed to create Midtrans token - NO TAX + VOUCHER SYSTEM', [
                     'order_number' => $order->order_number,
                     'payment_method' => $request->payment_method,
                     'customer_email' => $request->email,
                     'total_amount' => $totalAmount
                 ]);
-                
+
                 if ($request->ajax() || $request->expectsJson()) {
                     return response()->json([
                         'success' => false,
@@ -746,14 +755,14 @@ class CheckoutController extends Controller
                         'order_number' => $order->order_number
                     ], 500);
                 }
-                
+
                 return redirect()->route('checkout.success', ['orderNumber' => $order->order_number])
-                               ->with('error', 'Order created but payment session failed. Please contact support.');
+                                 ->with('error', 'Order created but payment session failed. Please contact support.');
             }
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             DB::rollback();
-            Log::warning('Validation error in checkout - NO TAX + SIMPLE COUPON', [
+            Log::warning('Validation error in checkout - NO TAX + VOUCHER SYSTEM', [
                 'errors' => $e->errors(),
                 'customer_email' => $request->email ?? 'unknown',
                 'validation_fields' => array_keys($e->errors())
@@ -770,7 +779,7 @@ class CheckoutController extends Controller
             
         } catch (\Exception $e) {
             DB::rollback();
-            Log::error('Checkout error - NO TAX + SIMPLE COUPON: ' . $e->getMessage(), [
+            Log::error('Checkout error - NO TAX + VOUCHER SYSTEM: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
                 'payment_method' => $request->payment_method ?? 'unknown',
                 'customer_email' => $request->email ?? 'unknown',
@@ -976,12 +985,12 @@ class CheckoutController extends Controller
     }
 
     /**
-     * CRITICAL FIX: Create Midtrans payment with SIMPLE coupon support that works like working version
+     * CRITICAL FIX: Create Midtrans payment with VOUCHER support that works
      */
     private function createMidtransPayment($order, $cartItems, $request)
     {
         try {
-            Log::info('Creating Midtrans payment session - NO TAX + SIMPLE COUPON', [
+            Log::info('Creating Midtrans payment session - NO TAX + VOUCHER SYSTEM', [
                 'order_number' => $order->order_number,
                 'total_amount' => $order->total_amount,
                 'discount_amount' => $order->discount_amount ?? 0,
@@ -1020,16 +1029,16 @@ class CheckoutController extends Controller
                 ];
             }
             
-            // SIMPLE COUPON: Add discount as NEGATIVE item if exists - BUT SAFER
+            // VOUCHER: Add discount as NEGATIVE item if exists - BUT SAFER
             $discountAmount = (float) ($order->discount_amount ?? 0);
             if ($discountAmount > 0) {
                 $discountName = 'Discount';
                 
-                // Try to get coupon code from order meta_data
+                // Try to get voucher code from order meta_data
                 if ($order->meta_data) {
                     $metaData = json_decode($order->meta_data, true);
-                    if (isset($metaData['coupon_info']['code'])) {
-                        $discountName = 'Discount (' . $metaData['coupon_info']['code'] . ')';
+                    if (isset($metaData['voucher_info']['voucher_code'])) {
+                        $discountName = 'Discount (' . $metaData['voucher_info']['voucher_code'] . ')';
                     }
                 }
                 
@@ -1117,7 +1126,7 @@ class CheckoutController extends Controller
                 'item_details' => $itemDetails
             ];
 
-            Log::info('Calling MidtransService with simple coupon-enabled payload', [
+            Log::info('Calling MidtransService with voucher-enabled payload', [
                 'order_number' => $order->order_number,
                 'gross_amount' => (int) $order->total_amount,
                 'item_details_count' => count($itemDetails),
@@ -1128,13 +1137,17 @@ class CheckoutController extends Controller
             $response = $this->midtransService->createSnapToken($midtransPayload);
             
             if (isset($response['token'])) {
-                Log::info('Midtrans Snap token created successfully with simple coupon support', [
+                Log::info('Midtrans Snap token created successfully with voucher support', [
                     'order_number' => $order->order_number,
                     'token_length' => strlen($response['token']),
                     'discount_applied' => $discountAmount
                 ]);
-                
-                return $response['token'];
+
+                // ⬇️ KEMBALIKAN token + redirect_url
+                return [
+                    'token' => $response['token'],
+                    'redirect_url' => $response['redirect_url'] ?? null,
+                ];
             } else {
                 Log::error('MidtransService returned no token', [
                     'order_number' => $order->order_number,
@@ -1144,7 +1157,7 @@ class CheckoutController extends Controller
             }
 
         } catch (\Exception $e) {
-            Log::error('Exception in Midtrans payment creation with simple coupon support', [
+            Log::error('Exception in Midtrans payment creation with voucher support', [
                 'order_number' => $order->order_number ?? 'unknown',
                 'error' => $e->getMessage(),
                 'error_line' => $e->getLine(),
@@ -1533,10 +1546,11 @@ class CheckoutController extends Controller
                 'payment_method' => $order->payment_method
             ];
             
-            $snapToken = $this->createMidtransPayment($order, $cartItems, $simulatedRequest);
+            $midtrans = $this->createMidtransPayment($order, $cartItems, $simulatedRequest);
             
-            if ($snapToken) {
-                $order->update(['snap_token' => $snapToken]);
+            if ($midtrans && isset($midtrans['token'])) {
+                $order->update(['snap_token' => $midtrans['token']]);
+                $snapToken = $midtrans['token'];
             }
         }
         
@@ -1684,14 +1698,14 @@ class CheckoutController extends Controller
                 'payment_method' => $order->payment_method
             ];
             
-            $snapToken = $this->createMidtransPayment($order, $cartItems, $simulatedRequest);
+            $midtrans = $this->createMidtransPayment($order, $cartItems, $simulatedRequest);
             
-            if ($snapToken) {
-                $order->update(['snap_token' => $snapToken]);
+            if ($midtrans && isset($midtrans['token'])) {
+                $order->update(['snap_token' => $midtrans['token']]);
                 
                 return response()->json([
                     'success' => true,
-                    'snap_token' => $snapToken,
+                    'snap_token' => $midtrans['token'],
                     'order_number' => $order->order_number,
                     'message' => 'Payment session created successfully'
                 ]);

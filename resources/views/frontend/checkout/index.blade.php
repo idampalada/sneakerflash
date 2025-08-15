@@ -20,7 +20,10 @@
 @if(Auth::check())
     <meta name="user-email" content="{{ Auth::user()->email }}">
 @endif
-
+@if($appliedVoucher ?? false)
+    <meta name="applied-voucher-code" content="{{ $appliedVoucher['voucher_code'] }}">
+    <meta name="applied-voucher-discount" content="{{ $appliedVoucher['discount_amount'] }}">
+@endif
 @php
     $primaryAddressId = null;
     $userHasPrimaryAddress = false;
@@ -471,7 +474,9 @@
                             
                             <input type="hidden" name="shipping_method" id="shipping_method" required>
                             <input type="hidden" name="shipping_cost" id="shipping_cost" value="0" required>
-                            
+                            <!-- Voucher Hidden Inputs -->
+<input type="hidden" name="applied_voucher_code" id="applied_voucher_code" value="{{ $appliedVoucher['voucher_code'] ?? '' }}">
+<input type="hidden" name="applied_voucher_discount" id="applied_voucher_discount" value="{{ $appliedVoucher['discount_amount'] ?? 0 }}">
                             <div class="flex space-x-4 mt-8">
                                 <button type="button" onclick="prevStep(2)" 
                                         class="flex-1 bg-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-400 transition-colors font-medium">
@@ -642,34 +647,34 @@
                         
                         <!-- VOUCHER/COUPON SECTION - NEW -->
                         <div class="border-t border-gray-200 pt-4 mb-4">
-                            <h4 class="text-sm font-medium text-gray-900 mb-3">🎫 Promo Code / Voucher</h4>
-                            
-                            <!-- Coupon Message Container -->
-                            <div id="coupon-message-container" class="hidden"></div>
-                            
-                            <!-- Applied Coupon Display -->
-                            <div id="applied-coupon-container" class="hidden mb-4"></div>
-                            
-                            <!-- Coupon Input Section -->
-                            <div id="coupon-input-section" class="mb-4">
-                                <div class="flex space-x-2">
-                                    <input type="text" 
-                                           id="coupon-code" 
-                                           placeholder="Enter coupon code"
-                                           class="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                           maxlength="50">
-                                    <button type="button" 
-                                            id="apply-coupon-btn"
-                                            class="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors font-medium">
-                                        Apply
-                                    </button>
-                                </div>
-                                <div id="coupon-validation-message" class="hidden"></div>
-                            </div>
-                            
-                            <!-- Available Coupons Display -->
-                            <div id="available-coupons-container" class="hidden"></div>
-                        </div>
+    <h4 class="text-sm font-medium text-gray-900 mb-3">🎫 Voucher Code</h4>
+    
+    <!-- Voucher Message Container -->
+    <div id="voucher-message-container" class="hidden"></div>
+    
+    <!-- Applied Voucher Display -->
+    <div id="applied-voucher-container" class="hidden mb-4"></div>
+    
+    <!-- Voucher Input Section -->
+    <div id="voucher-input-section" class="mb-4">
+        <div class="flex space-x-2">
+            <input type="text" 
+                   id="voucher-code" 
+                   placeholder="Enter voucher code"
+                   class="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                   maxlength="50">
+            <button type="button" 
+                    id="apply-voucher-btn"
+                    class="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors font-medium">
+                Apply
+            </button>
+        </div>
+        <div id="voucher-validation-message" class="hidden"></div>
+    </div>
+    
+    <!-- Available Vouchers Display -->
+    <div id="available-vouchers-container" class="hidden"></div>
+</div>
                         
                         <!-- Order Totals - NO TAX VERSION + VOUCHER SUPPORT -->
                         <div class="border-t border-gray-200 pt-4 space-y-2">
@@ -681,16 +686,16 @@
                             </div>
                             
                             <!-- Discount Row - NEW -->
-                            <div class="discount-row flex justify-between text-sm {{ ($discountAmount ?? 0) > 0 ? '' : 'hidden' }}">
-                                <span class="text-gray-600">Discount 
-                                    @if($appliedCoupon ?? false)
-                                        <span class="text-xs text-green-600">({{ $appliedCoupon['code'] }})</span>
-                                    @endif
-                                </span>
-                                <span class="text-green-600 font-medium" data-discount-display>
-                                    -Rp {{ number_format($discountAmount ?? 0, 0, ',', '.') }}
-                                </span>
-                            </div>
+                           <div class="discount-row flex justify-between text-sm {{ ($discountAmount ?? 0) > 0 ? '' : 'hidden' }}">
+    <span class="text-gray-600">Discount 
+        @if($appliedVoucher ?? false)
+            <span class="text-xs text-green-600">({{ $appliedVoucher['voucher_code'] }})</span>
+        @endif
+    </span>
+    <span class="text-green-600 font-medium" data-discount-display>
+        -Rp {{ number_format($discountAmount ?? 0, 0, ',', '.') }}
+    </span>
+</div>
                             
                             <div class="flex justify-between text-sm">
                                 <span class="text-gray-600">Shipping</span>
@@ -729,20 +734,20 @@
                         @endif
 
                         <!-- Voucher Benefits Info -->
-                        @if($appliedCoupon ?? false)
-                            <div class="mt-4 pt-4 border-t border-gray-200">
-                                <div class="bg-green-50 p-3 rounded-lg">
-                                    <div class="flex items-center text-green-800 text-sm">
-                                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                        </svg>
-                                        <strong>{{ $appliedCoupon['code'] }} Applied!</strong>
-                                    </div>
-                                    <p class="text-xs text-green-700 mt-1">{{ $appliedCoupon['summary'] ?? 'Discount applied to your order' }}</p>
-                                    <p class="text-xs text-green-600 mt-1 font-medium">You saved: Rp {{ number_format($discountAmount ?? 0, 0, ',', '.') }}</p>
-                                </div>
-                            </div>
-                        @endif
+                        @if($appliedVoucher ?? false)
+    <div class="mt-4 pt-4 border-t border-gray-200">
+        <div class="bg-green-50 p-3 rounded-lg">
+            <div class="flex items-center text-green-800 text-sm">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <strong>{{ $appliedVoucher['voucher_code'] }} Applied!</strong>
+            </div>
+            <p class="text-xs text-green-700 mt-1">{{ $appliedVoucher['summary'] ?? 'Discount applied to your order' }}</p>
+            <p class="text-xs text-green-600 mt-1 font-medium">You saved: Rp {{ number_format($discountAmount ?? 0, 0, ',', '.') }}</p>
+        </div>
+    </div>
+@endif
 
                         <!-- Security Info -->
                         <div class="mt-4 pt-4 border-t border-gray-200">
@@ -967,5 +972,5 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- Load the NO TAX JavaScript file -->
 <script src="{{ asset('js/enhanced-checkout.js') }}"></script>
 
-<script src="{{ asset('js/voucher.js') }}"></script>
+<script src="{{ asset('js/voucher-checkout.js') }}"></script>
 @endsection

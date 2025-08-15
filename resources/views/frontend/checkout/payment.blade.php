@@ -8,13 +8,17 @@
 <meta name="midtrans-client-key" content="{{ config('services.midtrans.client_key') }}">
 <meta name="midtrans-production" content="{{ config('services.midtrans.is_production') ? 'true' : 'false' }}">
 
-@if($order->payment_status === 'pending' && $snapToken)
+@if($order->status === 'pending' && !empty($snapToken))
 <meta name="snap-token" content="{{ $snapToken }}">
 <meta name="order-number" content="{{ $order->order_number }}">
 @endif
 @endsection
 
 @section('content')
+@php
+  $meta = $order->meta_data ? json_decode($order->meta_data, true) : [];
+  $shippingMethod = $meta['shipping_method'] ?? $meta['shipping_method_detail'] ?? 'Shipping';
+@endphp
 
 <div class="container mx-auto px-4 py-8">
     <div class="max-w-4xl mx-auto">
@@ -41,33 +45,42 @@
                 <hr>
                 
                 <div class="flex justify-between">
-                    <span>Subtotal</span>
-                    <span>Rp {{ number_format($order->subtotal, 0, ',', '.') }}</span>
-                </div>
-                
-                <div class="flex justify-between">
-                    <span>Shipping ({{ $order->shipping_method }})</span>
-                    <span>Rp {{ number_format($order->shipping_cost, 0, ',', '.') }}</span>
-                </div>
-                
-                <div class="flex justify-between">
-                    <span>Tax (11%)</span>
-                    <span>Rp {{ number_format($order->tax_amount, 0, ',', '.') }}</span>
-                </div>
-                
-                <hr>
-                
-                <div class="flex justify-between text-lg font-bold">
-                    <span>Total</span>
-                    <span>Rp {{ number_format($order->total_amount, 0, ',', '.') }}</span>
-                </div>
-            </div>
-        </div>
+    <span>Subtotal</span>
+    <span>Rp {{ number_format($order->subtotal, 0, ',', '.') }}</span>
+</div>
+
+<div class="flex justify-between">
+    <span>Shipping ({{ $shippingMethod }})</span>
+    <span>Rp {{ number_format($order->shipping_cost, 0, ',', '.') }}</span>
+</div>
+
+@if(($order->discount_amount ?? 0) > 0)
+<div class="flex justify-between">
+    <span>Discount</span>
+    <span>- Rp {{ number_format($order->discount_amount, 0, ',', '.') }}</span>
+</div>
+@endif
+
+{{-- NO TAX: hanya tampilkan kalau > 0 --}}
+@if(($order->tax_amount ?? 0) > 0)
+<div class="flex justify-between">
+    <span>Tax</span>
+    <span>Rp {{ number_format($order->tax_amount, 0, ',', '.') }}</span>
+</div>
+@endif
+
+<hr>
+
+<div class="flex justify-between text-lg font-bold">
+    <span>Total</span>
+    <span>Rp {{ number_format($order->total_amount, 0, ',', '.') }}</span>
+</div>
+
 
         <!-- Payment Actions -->
         <div class="bg-white rounded-lg shadow-md p-6">
             <div class="text-center">
-                @if($order->payment_status === 'pending' && $snapToken)
+@if($order->status === 'pending' && !empty($snapToken))
                     <div id="payment-status" class="mb-6">
                         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
                             <h3 class="font-medium text-blue-800 mb-2">Ready for Payment</h3>
@@ -85,7 +98,7 @@
                         <p>Supports Credit Card, Bank Transfer, E-Wallet, and more</p>
                     </div>
 
-                @elseif($order->payment_status === 'paid')
+@elseif($order->status === 'paid')
                     <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
                         <h3 class="font-medium text-green-800 mb-2">✅ Payment Completed</h3>
                         <p class="text-green-700">Your payment has been successfully processed</p>
@@ -127,7 +140,7 @@
     </div>
 </div>
 
-@if($order->payment_status === 'pending' && $snapToken)
+@if($order->status === 'pending' && $snapToken)
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🎯 Payment page loaded');

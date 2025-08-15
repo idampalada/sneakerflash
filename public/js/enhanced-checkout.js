@@ -1,5 +1,27 @@
-// COMPLETE CHECKOUT FIX: Address Integration with Personal Info Auto-fill + ORDER SUMMARY FIX - NO TAX VERSION
+// COMPLETE CHECKOUT FIX: Address Integration with Personal Info Auto-fill + ORDER SUMMARY FIX - NO TAX VERSION + VOUCHER SYSTEM FIXED
 // File: public/js/enhanced-checkout.js
+// ==== DEBUG SWITCH ====
+const DEBUG_PAY = true;
+function dlog(...args) {
+    if (DEBUG_PAY) console.log(...args);
+}
+function derr(...args) {
+    if (DEBUG_PAY) console.error(...args);
+}
+function dgroup(name) {
+    if (DEBUG_PAY) console.group(name);
+}
+function dgroupEnd() {
+    if (DEBUG_PAY) console.groupEnd();
+}
+
+// Global error/sniffers
+window.onerror = function (msg, src, line, col, err) {
+    derr("❌ window.onerror", { msg, src, line, col, err });
+};
+window.addEventListener("unhandledrejection", (e) => {
+    derr("❌ unhandledrejection", e.reason);
+});
 
 // Global variables
 let subtotal = 0;
@@ -13,13 +35,29 @@ let primaryAddressId = null;
 let isCalculatingShipping = false;
 let searchTimeout;
 let cartItems = []; // ADDED: Store cart items for Order Summary
-let appliedCoupon = null; // TAMBAHAN: Track applied coupon
+let appliedVoucher = null; // VOUCHER: Track applied voucher
 let originalSubtotal = 0; // TAMBAHAN: Store original subtotal before discount
 let discountAmount = 0; // TAMBAHAN: Current discount amount
 
 document.addEventListener("DOMContentLoaded", function () {
+    dgroup("=== DEBUG Midtrans Meta ===");
+    const ck = document.querySelector(
+        'meta[name="midtrans-client-key"]'
+    )?.content;
+    const prod = document.querySelector(
+        'meta[name="midtrans-production"]'
+    )?.content;
+    dlog("client_key length:", ck ? ck.length : 0);
+    dlog("production meta:", prod);
+    dgroupEnd();
+
+    if (!window.snap) {
+        dlog("snap not present on load → will be loaded when needed.");
+    } else {
+        dlog("snap already present on load.");
+    }
     console.log(
-        "🚀 Complete Checkout Fix initialized with Order Summary fix - NO TAX VERSION"
+        "🚀 Complete Checkout Fix initialized with Order Summary fix - NO TAX VERSION + VOUCHER SYSTEM"
     );
 
     initializeVariables();
@@ -63,7 +101,7 @@ function initializeVariables() {
             ? primaryIdMeta.content
             : null;
 
-    console.log("Variables initialized (NO TAX):", {
+    console.log("Variables initialized (NO TAX + VOUCHER):", {
         subtotal,
         originalSubtotal,
         totalWeight,
@@ -75,13 +113,13 @@ function initializeVariables() {
     // PERBAIKI: Update initial totals with correct values (no discount initially)
     updateOrderSummaryTotals(originalSubtotal, 0, 0);
 
-    // TAMBAHAN: Check for applied coupon from session
-    checkAppliedCoupon();
+    // TAMBAHAN: Check for applied voucher from session
+    checkAppliedVoucher();
 }
 
 // ADDED: Initialize Order Summary with proper data
 function initializeOrderSummary() {
-    console.log("📊 Initializing Order Summary - NO TAX");
+    console.log("📊 Initializing Order Summary - NO TAX + VOUCHER");
 
     // Get cart items from the page (they should be rendered by the server)
     const cartItemElements = document.querySelectorAll(".order-summary-item");
@@ -110,7 +148,7 @@ function initializeOrderSummary() {
     console.log(
         "📊 Order Summary initialized with",
         cartItems.length,
-        "items - NO TAX"
+        "items - NO TAX + VOUCHER"
     );
 }
 
@@ -137,7 +175,7 @@ async function fetchCartItems() {
                 updateOrderSummaryTotals(originalSubtotal, 0, discountAmount);
 
                 console.log(
-                    "✅ Cart items fetched successfully (NO TAX):",
+                    "✅ Cart items fetched successfully (NO TAX + VOUCHER):",
                     cartItems.length,
                     "items"
                 );
@@ -148,7 +186,7 @@ async function fetchCartItems() {
     }
 }
 
-// ENHANCED: Update Order Summary totals with proper formatting - NO TAX
+// ENHANCED: Update Order Summary totals with proper formatting - NO TAX + VOUCHER
 function updateOrderSummaryTotals(
     cartSubtotal,
     shippingCost = 0,
@@ -237,110 +275,121 @@ function updateOrderSummaryTotals(
     // Update global subtotal
     subtotal = cartSubtotal;
 }
+
 function initializeVoucherSystem() {
     console.log("🎫 Initializing voucher system integration...");
-
-    // Check if voucher elements exist
-    const couponInput = document.getElementById("coupon-code");
-    if (couponInput) {
+    const voucherInput = document.getElementById("voucher-code");
+    if (voucherInput) {
         console.log("✅ Voucher system elements found");
-
-        // Load current applied coupon
-        loadCurrentAppliedCoupon();
-
-        // Setup voucher input handlers
+        loadCurrentAppliedVoucher();
         setupVoucherInputHandlers();
     } else {
         console.log("ℹ️ No voucher system elements found");
     }
 }
+
 function setupVoucherEventListeners() {
-    // Listen for voucher events from voucher.js
-    document.addEventListener("couponApplied", function (e) {
-        console.log("🎫 Coupon applied event received:", e.detail);
+    // ✅ Voucher applied
+    document.addEventListener("voucherApplied", function (e) {
+        console.log("🎫 Voucher applied event received:", e.detail);
 
-        if (e.detail.coupon && e.detail.totals) {
-            appliedCoupon = e.detail.coupon;
+        const v = e.detail?.voucher || null;
+        const discount = Number(v?.discount_amount || e.detail?.discount || 0);
+        appliedVoucher = v;
+        discountAmount = isNaN(discount) ? 0 : discount;
 
-            // Update totals with discount
-            updateOrderSummaryTotals(
-                originalSubtotal,
-                getCurrentShippingCost(),
-                e.detail.coupon.discount_amount
-            );
+        // Update totals (NO TAX)
+        updateOrderSummaryTotals(
+            originalSubtotal,
+            getCurrentShippingCost(),
+            discountAmount
+        );
 
-            // Recalculate shipping if needed
-            if (currentStep >= 3 && selectedDestination) {
-                setTimeout(() => calculateShipping(), 500);
-            }
+        // Opsional: kalau mau hitung ulang ongkir yang mungkin terpengaruh
+        if (currentStep >= 3 && selectedDestination) {
+            setTimeout(() => calculateShipping(), 300);
         }
 
-        showNotification("Coupon applied successfully!", "success");
+        showNotification("Voucher applied successfully!", "success");
     });
 
-    document.addEventListener("couponRemoved", function (e) {
-        console.log("🎫 Coupon removed event received:", e.detail);
+    // ✅ Voucher removed
+    document.addEventListener("voucherRemoved", function (e) {
+        console.log("🎫 Voucher removed event received:", e.detail);
+        appliedVoucher = null;
+        discountAmount = 0;
 
-        appliedCoupon = null;
-
-        // Update totals without discount
         updateOrderSummaryTotals(originalSubtotal, getCurrentShippingCost(), 0);
 
-        // Recalculate shipping if needed
         if (currentStep >= 3 && selectedDestination) {
-            setTimeout(() => calculateShipping(), 500);
+            setTimeout(() => calculateShipping(), 300);
         }
 
-        showNotification("Coupon removed", "info");
+        showNotification("Voucher removed", "info");
+    });
+
+    // ♻️ Backward compatibility: jika masih ada event lama dari kode sebelumnya
+    document.addEventListener("couponRemoved", function (e) {
+        console.log("🎫 [compat] Coupon removed event received:", e.detail);
+        // Map ke state baru
+        appliedVoucher = null;
+        discountAmount = 0;
+
+        updateOrderSummaryTotals(originalSubtotal, getCurrentShippingCost(), 0);
+
+        if (currentStep >= 3 && selectedDestination) {
+            setTimeout(() => calculateShipping(), 300);
+        }
+
+        showNotification("Voucher removed", "info");
     });
 }
 
-// TAMBAHAN: Check for applied coupon from session
-function checkAppliedCoupon() {
-    // This will be handled by voucher.js loadCurrentCoupon()
-    fetch("/api/coupons/current", {
+// TAMBAHAN: Check for applied voucher from session
+function checkAppliedVoucher() {
+    // This will be handled by voucher.js loadCurrentVoucher()
+    fetch("/api/vouchers/current", {
         headers: {
             Accept: "application/json",
         },
     })
         .then((response) => response.json())
         .then((data) => {
-            if (data.success && data.coupon) {
-                appliedCoupon = data.coupon;
-                console.log("🎫 Applied coupon found:", appliedCoupon);
-
+            if (data.success && data.voucher) {
+                appliedVoucher = data.voucher;
+                console.log("🎫 Applied voucher found:", appliedVoucher);
                 // Update totals with existing discount
                 updateOrderSummaryTotals(
                     originalSubtotal,
                     getCurrentShippingCost(),
-                    appliedCoupon.discount_amount || 0
+                    appliedVoucher.discount_amount || 0
                 );
             }
         })
         .catch((error) => {
-            console.log("ℹ️ No applied coupon found");
+            console.log("ℹ️ No applied voucher found");
         });
 }
 
-// TAMBAHAN: Load current applied coupon
-function loadCurrentAppliedCoupon() {
+// TAMBAHAN: Load current applied voucher
+function loadCurrentAppliedVoucher() {
     // Let voucher.js handle this
     if (
         window.voucherManager &&
-        typeof window.voucherManager.loadCurrentCoupon === "function"
+        typeof window.voucherManager.loadCurrentVoucher === "function"
     ) {
-        window.voucherManager.loadCurrentCoupon();
+        window.voucherManager.loadCurrentVoucher();
     }
 }
 
 // TAMBAHAN: Setup voucher input handlers
 function setupVoucherInputHandlers() {
-    const couponInput = document.getElementById("coupon-code");
-    if (couponInput) {
+    const voucherInput = document.getElementById("voucher-code");
+    if (voucherInput) {
         // Real-time validation (handled by voucher.js)
-        // Just ensure we update totals when coupon changes
-        couponInput.addEventListener("focus", function () {
-            console.log("🎫 Coupon input focused");
+        // Just ensure we update totals when voucher changes
+        voucherInput.addEventListener("focus", function () {
+            console.log("🎫 Voucher input focused");
         });
     }
 }
@@ -424,7 +473,7 @@ function autoFillPersonalInformation() {
         fillFieldIfEmpty("recipient_name", authenticatedUserName);
         fillFieldIfEmpty("phone_recipient", authenticatedUserPhone);
 
-        console.log("✅ Personal information auto-filled (NO TAX):", {
+        console.log("✅ Personal information auto-filled (NO TAX + VOUCHER):", {
             firstName,
             lastName,
             phone: authenticatedUserPhone,
@@ -1449,7 +1498,7 @@ function selectShipping(radio) {
 // Order submission handling
 function handleOrderSubmission(paymentMethod) {
     console.log(
-        "🛒 Processing order with payment method (NO TAX):",
+        "🛒 Processing order with payment method (NO TAX + VOUCHER):",
         paymentMethod
     );
 
@@ -1478,18 +1527,24 @@ function handleOrderSubmission(paymentMethod) {
     const form = document.getElementById("checkout-form");
     const formData = new FormData(form);
 
-    // TAMBAHKAN: Include coupon data if applied
-    if (appliedCoupon) {
-        console.log("🎫 Adding coupon data to form submission:", appliedCoupon);
-        formData.set("applied_coupon_code", appliedCoupon.code);
-        formData.set("applied_coupon_discount", appliedCoupon.discount_amount);
+    // TAMBAHKAN: Include voucher data if applied
+    if (appliedVoucher) {
+        console.log(
+            "🎫 Adding voucher data to form submission:",
+            appliedVoucher
+        );
+        formData.set("applied_voucher_code", appliedVoucher.voucher_code);
+        formData.set(
+            "applied_voucher_discount",
+            appliedVoucher.discount_amount
+        );
     }
 
     // Ensure all address fields are properly filled
     validateAndFillAddressFields(formData);
 
     // Debug form data
-    console.log("📋 Form data being sent (NO TAX):");
+    console.log("📋 Form data being sent (NO TAX + VOUCHER):");
     for (let [key, value] of formData.entries()) {
         console.log(`${key}: ${value}`);
     }
@@ -1532,7 +1587,10 @@ function handleOrderSubmission(paymentMethod) {
 
             if (contentType && contentType.includes("application/json")) {
                 const data = await response.json();
-                console.log("✅ JSON Response received (NO TAX):", data);
+                console.log(
+                    "✅ JSON Response received (NO TAX + VOUCHER):",
+                    data
+                );
                 return { success: true, data: data, status: response.status };
             } else {
                 const text = await response.text();
@@ -1563,7 +1621,10 @@ function handleOrderSubmission(paymentMethod) {
                 const data = result.data;
 
                 if (data.success) {
-                    console.log("🎉 Order successful (NO TAX):", data);
+                    console.log(
+                        "🎉 Order successful (NO TAX + VOUCHER):",
+                        data
+                    );
                     handleSuccessfulOrder(data, paymentMethod);
                 } else if (data.errors) {
                     console.log("❌ Validation errors:", data.errors);
@@ -1643,43 +1704,111 @@ function validateAndFillAddressFields(formData) {
     }
 }
 
-async function handleSuccessfulOrder(data, paymentMethod) {
-    console.log("🎯 Handling successful order (NO TAX):", data);
+// ✅ FIXED: Proper snap_token handling + robust fallback
+async function handleSuccessfulOrder(data, paymentMethod, redirectUrl = null) {
+    console.log("🎯 Handling successful order (NO TAX + VOUCHER):", data);
 
-    try {
-        await loadMidtransScript(); // pastikan snap sudah siap
+    const orderNumber = data.order_number;
 
-        if (data.snap_token) {
-            console.log("💳 Snap token received, opening Midtrans popup");
-            showSuccess("💳 Opening payment gateway...");
-            // panggil langsung tanpa setTimeout agar dianggap user-gesture chaining
-            openMidtransPayment(data.snap_token, data.order_number);
-            return;
-        }
-
-        if (data.redirect_url) {
-            window.location.href = data.redirect_url;
-            return;
-        }
-
-        if (data.order_number) {
-            window.location.href = `/checkout/payment/${data.order_number}`;
-            return;
-        }
-
-        handleOrderError(
-            "Failed to create payment session. Please contact support."
-        );
-    } catch (e) {
-        console.error("❌ Midtrans script not ready:", e);
-        // Fallback aman: buka halaman payment (yang akan men-generate snap lagi)
-        if (data.order_number) {
-            window.location.href = `/checkout/payment/${data.order_number}`;
+    // helper redirect
+    const goRedirect = (why = "fallback") => {
+        console.warn(`↪️ Fallback redirect triggered (${why})`);
+        if (redirectUrl) {
+            window.location.href = redirectUrl; // Hosted payment page Midtrans
+        } else if (orderNumber) {
+            window.location.href = `/checkout/payment/${orderNumber}`; // Halaman payment kita (embed snap)
         } else {
             handleOrderError(
-                "Payment system not available. Please refresh the page."
+                "Payment session not available. Please refresh the page."
             );
         }
+    };
+
+    try {
+        await loadMidtransScript(); // pastikan snap siap
+
+        // Kalau token ngga ada, langsung redirect
+        if (!data.snap_token) {
+            console.warn("No snap_token in response, redirecting…");
+            return goRedirect("no_token");
+        }
+
+        showSuccess("💳 Opening payment gateway...");
+
+        // 🛡️ Watchdog: kalau modal tidak muncul dalam 4.5 detik, redirect ke hosted page
+        let opened = false;
+        const watchdog = setTimeout(() => {
+            if (!opened) {
+                console.warn(
+                    "⏱️ Snap modal timeout – assets mungkin ke-block/CDN timeout"
+                );
+                goRedirect("timeout");
+            }
+        }, 4500);
+
+        // Coba buka modal
+        try {
+            window.snap.pay(data.snap_token, {
+                onSuccess: function (result) {
+                    opened = true;
+                    clearTimeout(watchdog);
+                    console.log("✅ Payment successful:", result);
+                    showSuccess("✅ Payment successful! Redirecting...");
+                    setTimeout(() => {
+                        const oid = result.order_id || orderNumber;
+                        window.location.href = `/checkout/success/${oid}?payment=success`;
+                    }, 1200);
+                },
+                onPending: function (result) {
+                    opened = true;
+                    clearTimeout(watchdog);
+                    console.log("⏳ Payment pending:", result);
+                    showError(
+                        "⏳ Payment is being processed. You will receive confirmation shortly."
+                    );
+                    setTimeout(() => {
+                        const oid = result.order_id || orderNumber;
+                        window.location.href = `/checkout/success/${oid}?payment=pending`;
+                    }, 1500);
+                },
+                onError: function (result) {
+                    opened = true;
+                    clearTimeout(watchdog);
+                    console.error("❌ Payment error:", result);
+                    // 💉 error karena asset CDN timeout / adblock → redirect ke hosted page
+                    goRedirect("onError");
+                },
+                onClose: function () {
+                    opened = true;
+                    clearTimeout(watchdog);
+                    console.log("🔒 Payment popup closed by user");
+                    // Kalau user tutup popup, tawarkan ke hosted page
+                    if (
+                        confirm(
+                            "Payment was cancelled. Open the payment page in a new tab?"
+                        )
+                    ) {
+                        if (redirectUrl) window.open(redirectUrl, "_blank");
+                        else
+                            window.location.href = `/checkout/payment/${orderNumber}`;
+                    } else {
+                        resetSubmitButton();
+                    }
+                },
+            });
+
+            // Kalau tidak throw & tidak timeout → anggap opened ketika `snap.pay` return (modal biasanya render async)
+            // namun kita tetap biarkan watchdog menangkap kasus asset-block.
+        } catch (snapOpenErr) {
+            clearTimeout(watchdog);
+            console.error("❌ Error calling snap.pay:", snapOpenErr);
+            // 💉 langsung fallback
+            return goRedirect("snap_pay_exception");
+        }
+    } catch (e) {
+        console.error("❌ Midtrans script not ready:", e);
+        // 💉 fallback aman
+        return goRedirect("script_not_ready");
     }
 }
 
@@ -1762,140 +1891,166 @@ function showError(message) {
 // Midtrans integration
 function loadMidtransScript() {
     return new Promise((resolve, reject) => {
-        if (window.snap) return resolve();
+        dgroup("=== DEBUG loadMidtransScript ===");
+        try {
+            if (window.snap) {
+                dlog("snap already present");
+                dgroupEnd();
+                return resolve();
+            }
 
-        const clientKey = document.querySelector(
-            'meta[name="midtrans-client-key"]'
-        )?.content;
-        const isProduction =
-            document.querySelector('meta[name="midtrans-production"]')
-                ?.content === "true";
+            const clientKeyMeta = document.querySelector(
+                'meta[name="midtrans-client-key"]'
+            );
+            const prodMeta = document.querySelector(
+                'meta[name="midtrans-production"]'
+            );
+            const clientKey = clientKeyMeta?.content || "";
+            const isProduction = prodMeta?.content === "true";
 
-        if (!clientKey)
-            return reject(new Error("Midtrans client key not found"));
+            dlog(
+                "clientKey present?",
+                !!clientKey,
+                "isProduction?",
+                isProduction
+            );
 
-        // Jangan load dua kali
-        const existing = document.querySelector("script[data-client-key]");
-        if (existing) {
-            // tunggu sampai snap terdefinisi
-            const check = setInterval(() => {
-                if (window.snap) {
+            if (!clientKey) {
+                dgroupEnd();
+                return reject(
+                    new Error("Midtrans client key not found in meta")
+                );
+            }
+
+            // prevent double load
+            const existing = document.querySelector("script[data-client-key]");
+            if (existing) {
+                dlog("script tag already exists, waiting for snap…");
+                const check = setInterval(() => {
+                    if (window.snap) {
+                        clearInterval(check);
+                        dlog("snap became available");
+                        dgroupEnd();
+                        resolve();
+                    }
+                }, 100);
+                setTimeout(() => {
                     clearInterval(check);
-                    resolve();
-                }
-            }, 100);
-            // timeout 5 detik
-            setTimeout(() => {
-                clearInterval(check);
+                    if (window.snap) {
+                        dgroupEnd();
+                        resolve();
+                    } else {
+                        dgroupEnd();
+                        reject(
+                            new Error(
+                                "Snap not available after existing script present"
+                            )
+                        );
+                    }
+                }, 5000);
+                return;
+            }
+
+            const script = document.createElement("script");
+            script.src = isProduction
+                ? "https://app.midtrans.com/snap/snap.js"
+                : "https://app.sandbox.midtrans.com/snap/snap.js";
+            script.setAttribute("data-client-key", clientKey);
+
+            script.onload = () => {
+                dlog("snap onload fired. available?", !!window.snap);
+                dgroupEnd();
                 if (window.snap) resolve();
-                else
-                    reject(
-                        new Error("Snap not available after script present")
-                    );
-            }, 5000);
-            return;
+                else reject(new Error("Snap object not available after load"));
+            };
+            script.onerror = (e) => {
+                derr("script.onerror snap.js", e);
+                dgroupEnd();
+                reject(new Error("Failed to load Midtrans script"));
+            };
+            document.head.appendChild(script);
+        } catch (e) {
+            derr("loadMidtransScript exception", e);
+            dgroupEnd();
+            reject(e);
         }
-
-        const script = document.createElement("script");
-        script.src = isProduction
-            ? "https://app.midtrans.com/snap/snap.js"
-            : "https://app.sandbox.midtrans.com/snap/snap.js";
-        script.setAttribute("data-client-key", clientKey);
-
-        script.onload = () => {
-            if (window.snap) resolve();
-            else reject(new Error("Snap object not available after load"));
-        };
-        script.onerror = () =>
-            reject(new Error("Failed to load Midtrans script"));
-
-        document.head.appendChild(script);
     });
 }
 
 function openMidtransPayment(snapToken, orderNumber) {
-    console.log("💳 Opening Midtrans payment with token:", snapToken);
+    dgroup("=== DEBUG Midtrans Payment ===");
+    dlog("Order Number:", orderNumber);
+    dlog("Snap Token:", snapToken);
+    dlog("window.snap exists?", !!window.snap, window.snap);
 
-    if (typeof window.snap === "undefined") {
-        console.error("❌ Midtrans Snap not loaded");
+    const doPay = () => {
+        try {
+            dlog("Calling snap.pay(...) now");
+            window.snap.pay(snapToken, {
+                onSuccess: function (result) {
+                    dlog("✅ snap.onSuccess", result);
+                    showSuccess("✅ Payment successful! Redirecting…");
+                    setTimeout(() => {
+                        if (result.order_id)
+                            window.location.href = `/checkout/success/${result.order_id}?payment=success`;
+                        else
+                            window.location.href = `/checkout/success/${orderNumber}?payment=success`;
+                    }, 800);
+                },
+                onPending: function (result) {
+                    dlog("⏳ snap.onPending", result);
+                    showError("⏳ Payment is being processed…");
+                    setTimeout(() => {
+                        if (result.order_id)
+                            window.location.href = `/checkout/success/${result.order_id}?payment=pending`;
+                        else
+                            window.location.href = `/checkout/success/${orderNumber}?payment=pending`;
+                    }, 1200);
+                },
+                onError: function (result) {
+                    derr("❌ snap.onError", result);
+                    handleOrderError(
+                        "Payment failed. Please try again or use a different method."
+                    );
+                },
+                onClose: function () {
+                    dlog("🔒 snap.onClose (user closed)");
+                    showError(
+                        "Payment was cancelled. You can continue payment later from your order page."
+                    );
+                    setTimeout(() => {
+                        if (confirm("Open your order page to retry payment?")) {
+                            window.location.href = `/checkout/success/${orderNumber}`;
+                        } else {
+                            resetSubmitButton();
+                        }
+                    }, 500);
+                },
+            });
+        } catch (err) {
+            derr("snap.pay threw exception", err);
+            handleOrderError(
+                "Failed to open payment gateway. Please try again."
+            );
+        } finally {
+            dgroupEnd();
+        }
+    };
 
+    if (!window.snap) {
+        dlog("snap not present yet → loading script then retry");
         loadMidtransScript()
             .then(() => {
-                console.log("✅ Midtrans script loaded, retry payment");
-                setTimeout(
-                    () => openMidtransPayment(snapToken, orderNumber),
-                    1000
-                );
+                dlog("snap ready after load?", !!window.snap);
+                doPay();
             })
-            .catch(() => {
-                handleOrderError(
-                    "Payment system not available. Please refresh the page."
-                );
+            .catch((e) => {
+                derr("Failed to load snap, fallback to /payment page", e);
+                window.location.href = `/checkout/payment/${orderNumber}`;
+                dgroupEnd();
             });
-        return;
-    }
-
-    showSuccess("💳 Opening payment gateway...");
-
-    try {
-        window.snap.pay(snapToken, {
-            onSuccess: function (result) {
-                console.log("✅ Payment successful:", result);
-                showSuccess("✅ Payment successful! Redirecting...");
-
-                setTimeout(() => {
-                    if (result.order_id) {
-                        window.location.href = `/checkout/success/${result.order_id}?payment=success`;
-                    } else {
-                        window.location.href = `/checkout/success/${orderNumber}?payment=success`;
-                    }
-                }, 1500);
-            },
-
-            onPending: function (result) {
-                console.log("⏳ Payment pending:", result);
-                showError(
-                    "⏳ Payment is being processed. You will receive confirmation shortly."
-                );
-
-                setTimeout(() => {
-                    if (result.order_id) {
-                        window.location.href = `/checkout/success/${result.order_id}?payment=pending`;
-                    } else {
-                        window.location.href = `/checkout/success/${orderNumber}?payment=pending`;
-                    }
-                }, 2000);
-            },
-
-            onError: function (result) {
-                console.error("❌ Payment error:", result);
-                handleOrderError(
-                    "Payment failed. Please try again or use a different payment method."
-                );
-            },
-
-            onClose: function () {
-                console.log("🔒 Payment popup closed by user");
-                showError(
-                    "Payment was cancelled. You can continue payment later from your order page."
-                );
-
-                setTimeout(() => {
-                    if (
-                        confirm(
-                            "Would you like to view your order and try payment again?"
-                        )
-                    ) {
-                        window.location.href = `/checkout/success/${orderNumber}`;
-                    } else {
-                        resetSubmitButton();
-                    }
-                }, 1000);
-            },
-        });
-    } catch (error) {
-        console.error("❌ Error opening Midtrans:", error);
-        handleOrderError("Failed to open payment gateway. Please try again.");
+    } else {
+        doPay();
     }
 }
 
@@ -1958,7 +2113,9 @@ window.showNewAddressForm = showNewAddressForm;
 window.updateAddressLabelStyles = updateAddressLabelStyles;
 window.updateOrderSummaryTotals = updateOrderSummaryTotals;
 
-console.log("🎯 Complete checkout fix loaded successfully - NO TAX VERSION!");
+console.log(
+    "🎯 Complete checkout fix loaded successfully - NO TAX VERSION + VOUCHER SYSTEM!"
+);
 console.log("✅ Key fixes implemented:");
 console.log("  - Auto-fill personal information from authenticated user");
 console.log("  - Enhanced saved address loading");
@@ -1968,3 +2125,5 @@ console.log("  - Complete address integration");
 console.log("  - ORDER SUMMARY FIX: Real-time total updates WITHOUT TAX");
 console.log("  - Cart data properly displayed in Order Summary");
 console.log("  - TAX COMPLETELY REMOVED from all calculations");
+console.log("  - VOUCHER SYSTEM integrated with proper event handling");
+console.log("  - MIDTRANS POPUP FIXED with robust fallback mechanism");

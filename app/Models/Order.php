@@ -32,8 +32,8 @@ class Order extends Model
         'billing_address',
         'store_origin',
         'payment_method',
-                'coupon_id',        // ADDED
-        'coupon_code',      // ADDED
+                'voucher_id',        // ADDED
+        'voucher_code',      // ADDED
         'payment_token',
         'payment_url',
         'snap_token',
