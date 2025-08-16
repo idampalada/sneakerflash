@@ -390,6 +390,80 @@ class Order extends Model
         ];
     }
 
+    /**
+ * Scope for orders that used points - NEW
+ */
+public function scopeWithPoints($query)
+{
+    return $query->whereRaw("JSON_EXTRACT(meta_data, '$.points_info.points_used') > 0");
+}
+
+public function getOrderSummary(): array
+{
+    return [
+        'order_number' => $this->order_number,
+        'subtotal' => $this->subtotal,
+        'shipping_cost' => $this->shipping_cost,
+        'voucher_discount' => $this->discount_amount,
+        'points_used' => $this->getPointsUsed(),
+        'points_discount' => $this->getPointsDiscount(),
+        'total_discount' => $this->getTotalDiscount(),
+        'total_amount' => $this->total_amount,
+        'status' => $this->status,
+        'payment_method' => $this->payment_method,
+        'used_points' => $this->usedPoints(),
+        'used_voucher' => $this->usedVoucher(),
+        'voucher_code' => $this->getVoucherCode(),
+        'formatted' => [
+            'subtotal' => 'Rp ' . number_format($this->subtotal, 0, ',', '.'),
+            'shipping_cost' => 'Rp ' . number_format($this->shipping_cost, 0, ',', '.'),
+            'voucher_discount' => 'Rp ' . number_format($this->discount_amount, 0, ',', '.'),
+            'points_used' => $this->getFormattedPointsUsed(),
+            'points_discount' => $this->getFormattedPointsDiscount(),
+            'total_discount' => $this->getFormattedTotalDiscountAttribute(),
+            'total_amount' => 'Rp ' . number_format($this->total_amount, 0, ',', '.'),
+        ]
+    ];
+}
+
+/**
+ * Scope for orders that used vouchers - NEW
+ */
+public function scopeWithVouchers($query)
+{
+    return $query->where('discount_amount', '>', 0);
+}
+
+/**
+ * Scope for orders with any discounts (voucher or points) - NEW
+ */
+public function scopeWithDiscounts($query)
+{
+    return $query->where(function ($q) {
+        $q->where('discount_amount', '>', 0)
+          ->orWhereRaw("JSON_EXTRACT(meta_data, '$.points_info.points_discount') > 0");
+    });
+}
+
+public function getSavingsBreakdown(): array
+{
+    $voucherSavings = $this->discount_amount;
+    $pointsSavings = $this->getPointsDiscount();
+    $totalSavings = $voucherSavings + $pointsSavings;
+    
+    return [
+        'voucher_savings' => $voucherSavings,
+        'points_savings' => $pointsSavings,
+        'total_savings' => $totalSavings,
+        'savings_percentage' => $this->subtotal > 0 ? ($totalSavings / $this->subtotal) * 100 : 0,
+        'formatted' => [
+            'voucher_savings' => 'Rp ' . number_format($voucherSavings, 0, ',', '.'),
+            'points_savings' => 'Rp ' . number_format($pointsSavings, 0, ',', '.'),
+            'total_savings' => 'Rp ' . number_format($totalSavings, 0, ',', '.'),
+            'savings_percentage' => number_format($this->subtotal > 0 ? ($totalSavings / $this->subtotal) * 100 : 0, 1) . '%'
+        ]
+    ];
+}
     // =====================================
     // STATUS TRANSITION METHODS
     // =====================================
@@ -410,46 +484,53 @@ class Order extends Model
     }
 
     public function transitionTo($newStatus, $notes = null)
-    {
-        if (!$this->canTransitionTo($newStatus)) {
-            throw new \Exception("Cannot transition from {$this->status} to {$newStatus}");
-        }
-
-        $oldStatus = $this->status;
-        $this->status = $newStatus;
-
-        // Add transition notes
-        if ($notes) {
-            $this->notes = ($this->notes ? $this->notes . "\n" : '') . 
-                          "[" . now()->format('Y-m-d H:i:s') . "] Status changed from {$oldStatus} to {$newStatus}: {$notes}";
-        }
-
-        // Handle specific status transitions
-        switch ($newStatus) {
-            case 'shipped':
-                if (!$this->shipped_at) {
-                    $this->shipped_at = now();
-                }
-                break;
-                
-            case 'delivered':
-                if (!$this->delivered_at) {
-                    $this->delivered_at = now();
-                }
-                break;
-        }
-
-        $this->save();
-
-        \Illuminate\Support\Facades\Log::info('Order status transition', [
-            'order_number' => $this->order_number,
-            'old_status' => $oldStatus,
-            'new_status' => $newStatus,
-            'notes' => $notes
-        ]);
-
-        return $this;
+{
+    if (!$this->canTransitionTo($newStatus)) {
+        throw new \Exception("Cannot transition from {$this->status} to {$newStatus}");
     }
+
+    $oldStatus = $this->status;
+    $this->status = $newStatus;
+
+    // Add transition notes
+    if ($notes) {
+        $this->notes = ($this->notes ? $this->notes . "\n" : '') . 
+                      "[" . now()->format('Y-m-d H:i:s') . "] Status changed from {$oldStatus} to {$newStatus}: {$notes}";
+    }
+
+    // Handle specific status transitions
+    switch ($newStatus) {
+        case 'shipped':
+            if (!$this->shipped_at) {
+                $this->shipped_at = now();
+            }
+            break;
+            
+        case 'delivered':
+            if (!$this->delivered_at) {
+                $this->delivered_at = now();
+            }
+            break;
+            
+        case 'cancelled':
+            // Refund points if order is cancelled
+            $this->processPointsRefund();
+            break;
+    }
+
+    $this->save();
+
+    \Illuminate\Support\Facades\Log::info('Order status transition with points support', [
+        'order_number' => $this->order_number,
+        'old_status' => $oldStatus,
+        'new_status' => $newStatus,
+        'points_used' => $this->getPointsUsed(),
+        'points_refunded' => ($newStatus === 'cancelled' && $this->usedPoints()),
+        'notes' => $notes
+    ]);
+
+    return $this;
+}
 
     // =====================================
     // PAYMENT HELPER METHODS - UPDATED
@@ -550,4 +631,34 @@ class Order extends Model
                     ->pluck('revenue', 'status')
                     ->toArray();
     }
+    public function processPointsRefund(): void
+{
+    if (!$this->user || !$this->usedPoints()) {
+        return;
+    }
+    
+    try {
+        $pointsUsed = $this->getPointsUsed();
+        
+        if ($pointsUsed > 0) {
+            // Refund points to user
+            $this->user->increment('points_balance', $pointsUsed);
+            
+            Log::info('Points refunded for cancelled order', [
+                'order_id' => $this->id,
+                'order_number' => $this->order_number,
+                'user_id' => $this->user_id,
+                'points_refunded' => $pointsUsed,
+                'new_balance' => $this->user->fresh()->points_balance
+            ]);
+        }
+        
+    } catch (\Exception $e) {
+        Log::error('Error processing points refund for cancelled order', [
+            'order_id' => $this->id,
+            'order_number' => $this->order_number,
+            'error' => $e->getMessage()
+        ]);
+    }
+}
 }

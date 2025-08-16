@@ -38,6 +38,18 @@ let cartItems = []; // ADDED: Store cart items for Order Summary
 let appliedVoucher = null; // VOUCHER: Track applied voucher
 let originalSubtotal = 0; // TAMBAHAN: Store original subtotal before discount
 let discountAmount = 0; // TAMBAHAN: Current discount amount
+let appliedPoints = null; // Track applied points
+let pointsDiscount = 0; // Current points discount amount
+
+function getCurrentPointsData() {
+    if (window.pointsCheckout && window.pointsCheckout.appliedPoints > 0) {
+        return {
+            points_used: window.pointsCheckout.appliedPoints,
+            discount: window.pointsCheckout.pointsDiscount,
+        };
+    }
+    return null;
+}
 
 document.addEventListener("DOMContentLoaded", function () {
     dgroup("=== DEBUG Midtrans Meta ===");
@@ -101,7 +113,7 @@ function initializeVariables() {
             ? primaryIdMeta.content
             : null;
 
-    console.log("Variables initialized (NO TAX + VOUCHER):", {
+    console.log("Variables initialized (NO TAX + VOUCHER + POINTS):", {
         subtotal,
         originalSubtotal,
         totalWeight,
@@ -111,10 +123,13 @@ function initializeVariables() {
     });
 
     // PERBAIKI: Update initial totals with correct values (no discount initially)
-    updateOrderSummaryTotals(originalSubtotal, 0, 0);
+    updateOrderSummaryTotals(originalSubtotal, 0, 0, 0);
 
     // TAMBAHAN: Check for applied voucher from session
     checkAppliedVoucher();
+
+    // TAMBAHAN: Check for applied points from session
+    checkAppliedPoints();
 }
 
 // ADDED: Initialize Order Summary with proper data
@@ -186,24 +201,30 @@ async function fetchCartItems() {
     }
 }
 
-// ENHANCED: Update Order Summary totals with proper formatting - NO TAX + VOUCHER
 function updateOrderSummaryTotals(
     cartSubtotal,
     shippingCost = 0,
-    discount = 0
+    voucherDiscount = 0,
+    pointsDiscountAmount = 0 // TAMBAHAN: parameter untuk points discount
 ) {
     // PERBAIKI: Ensure all values are numbers
     cartSubtotal = parseFloat(cartSubtotal) || 0;
     shippingCost = parseFloat(shippingCost) || 0;
-    discount = parseFloat(discount) || 0; // PENTING: Parse discount as number
+    voucherDiscount = parseFloat(voucherDiscount) || 0;
+    pointsDiscountAmount = parseFloat(pointsDiscountAmount) || 0; // TAMBAHAN
 
     const taxAmount = 0; // NO TAX
-    const totalAmount = Math.max(0, cartSubtotal + shippingCost - discount); // Ensure not negative
+    // PERUBAHAN: Include points discount in total calculation
+    const totalAmount = Math.max(
+        0,
+        cartSubtotal + shippingCost - voucherDiscount - pointsDiscountAmount
+    );
 
-    console.log("📊 Updating Order Summary (NO TAX + VOUCHER):", {
+    console.log("📊 Updating Order Summary (NO TAX + VOUCHER + POINTS):", {
         subtotal: cartSubtotal,
         shipping: shippingCost,
-        discount: discount,
+        voucherDiscount: voucherDiscount,
+        pointsDiscount: pointsDiscountAmount,
         tax: 0,
         total: totalAmount,
     });
@@ -232,23 +253,46 @@ function updateOrderSummaryTotals(
         }
     });
 
-    // TAMBAHAN: Update discount display
-    const discountElements = document.querySelectorAll(
+    // TAMBAHAN: Update voucher discount display
+    const voucherDiscountElements = document.querySelectorAll(
         "[data-discount-display]"
     );
-    const discountRows = document.querySelectorAll(".discount-row");
+    const voucherDiscountRows = document.querySelectorAll(".discount-row");
 
-    if (discount > 0) {
-        discountElements.forEach((el) => {
+    if (voucherDiscount > 0) {
+        voucherDiscountElements.forEach((el) => {
             el.textContent = `-Rp ${new Intl.NumberFormat("id-ID").format(
-                discount
+                voucherDiscount
             )}`;
         });
-        discountRows.forEach((row) => {
+        voucherDiscountRows.forEach((row) => {
             row.classList.remove("hidden");
         });
     } else {
-        discountRows.forEach((row) => {
+        voucherDiscountRows.forEach((row) => {
+            row.classList.add("hidden");
+        });
+    }
+
+    // TAMBAHAN: Update points discount display
+    const pointsDiscountElements = document.querySelectorAll(
+        "[data-points-discount-display]"
+    );
+    const pointsDiscountRows = document.querySelectorAll(
+        ".points-discount-row"
+    );
+
+    if (pointsDiscountAmount > 0) {
+        pointsDiscountElements.forEach((el) => {
+            el.textContent = `-Rp ${new Intl.NumberFormat("id-ID").format(
+                pointsDiscountAmount
+            )}`;
+        });
+        pointsDiscountRows.forEach((row) => {
+            row.classList.remove("hidden");
+        });
+    } else {
+        pointsDiscountRows.forEach((row) => {
             row.classList.add("hidden");
         });
     }
@@ -269,8 +313,9 @@ function updateOrderSummaryTotals(
         shippingCostInput.value = shippingCost;
     }
 
-    // TAMBAHAN: Store discount amount
-    discountAmount = discount;
+    // PERUBAHAN: Store both discount amounts separately
+    discountAmount = voucherDiscount; // voucher discount
+    pointsDiscount = pointsDiscountAmount; // points discount
 
     // Update global subtotal
     subtotal = cartSubtotal;
@@ -298,11 +343,12 @@ function setupVoucherEventListeners() {
         appliedVoucher = v;
         discountAmount = isNaN(discount) ? 0 : discount;
 
-        // Update totals (NO TAX)
+        // Update totals with voucher discount
         updateOrderSummaryTotals(
             originalSubtotal,
             getCurrentShippingCost(),
-            discountAmount
+            discountAmount,
+            pointsDiscount // TAMBAHAN: include points discount
         );
 
         // Opsional: kalau mau hitung ulang ongkir yang mungkin terpengaruh
@@ -319,7 +365,12 @@ function setupVoucherEventListeners() {
         appliedVoucher = null;
         discountAmount = 0;
 
-        updateOrderSummaryTotals(originalSubtotal, getCurrentShippingCost(), 0);
+        updateOrderSummaryTotals(
+            originalSubtotal,
+            getCurrentShippingCost(),
+            0, // reset voucher discount
+            pointsDiscount // TAMBAHAN: keep points discount
+        );
 
         if (currentStep >= 3 && selectedDestination) {
             setTimeout(() => calculateShipping(), 300);
@@ -328,14 +379,62 @@ function setupVoucherEventListeners() {
         showNotification("Voucher removed", "info");
     });
 
+    // TAMBAHAN: Points applied event
+    document.addEventListener("pointsApplied", function (e) {
+        console.log("🪙 Points applied event received:", e.detail);
+
+        const pointsData = e.detail || {};
+        const discount = Number(pointsData.discount || 0);
+        appliedPoints = pointsData;
+        pointsDiscount = isNaN(discount) ? 0 : discount;
+
+        // Update totals with points discount
+        updateOrderSummaryTotals(
+            originalSubtotal,
+            getCurrentShippingCost(),
+            discountAmount, // keep voucher discount
+            pointsDiscount // new points discount
+        );
+
+        if (currentStep >= 3 && selectedDestination) {
+            setTimeout(() => calculateShipping(), 300);
+        }
+
+        showNotification("Points applied successfully!", "success");
+    });
+
+    // TAMBAHAN: Points removed event
+    document.addEventListener("pointsRemoved", function (e) {
+        console.log("🪙 Points removed event received:", e.detail);
+        appliedPoints = null;
+        pointsDiscount = 0;
+
+        updateOrderSummaryTotals(
+            originalSubtotal,
+            getCurrentShippingCost(),
+            discountAmount, // keep voucher discount
+            0 // reset points discount
+        );
+
+        if (currentStep >= 3 && selectedDestination) {
+            setTimeout(() => calculateShipping(), 300);
+        }
+
+        showNotification("Points removed", "info");
+    });
+
     // ♻️ Backward compatibility: jika masih ada event lama dari kode sebelumnya
     document.addEventListener("couponRemoved", function (e) {
         console.log("🎫 [compat] Coupon removed event received:", e.detail);
-        // Map ke state baru
         appliedVoucher = null;
         discountAmount = 0;
 
-        updateOrderSummaryTotals(originalSubtotal, getCurrentShippingCost(), 0);
+        updateOrderSummaryTotals(
+            originalSubtotal,
+            getCurrentShippingCost(),
+            0, // reset voucher discount
+            pointsDiscount // keep points discount
+        );
 
         if (currentStep >= 3 && selectedDestination) {
             setTimeout(() => calculateShipping(), 300);
@@ -1000,7 +1099,8 @@ function setupEventListeners() {
             updateOrderSummaryTotals(
                 originalSubtotal,
                 shippingCost,
-                discountAmount
+                discountAmount,
+                pointsDiscount
             );
         }
     });
@@ -1414,7 +1514,7 @@ function displayShippingOptions(options) {
 
     shippingOptions.innerHTML = html;
 
-    // Auto-select first option and update totals WITHOUT TAX
+    // Auto-select first option and update totals
     if (options.length > 0) {
         const firstOption = options[0];
         const shippingMethodEl = document.getElementById("shipping_method");
@@ -1427,11 +1527,12 @@ function displayShippingOptions(options) {
             shippingCostEl.value = firstOption.cost;
         }
 
-        // ADDED: Update Order Summary totals immediately WITHOUT TAX
+        // PERUBAHAN: Update Order Summary totals dengan 4 parameter
         updateOrderSummaryTotals(
             originalSubtotal,
             firstOption.cost,
-            discountAmount
+            discountAmount,
+            pointsDiscount // TAMBAHAN
         );
     }
 }
@@ -1461,8 +1562,13 @@ function resetShippingOptions() {
     if (shippingMethodEl) shippingMethodEl.value = "";
     if (shippingCostEl) shippingCostEl.value = "0";
 
-    // ADDED: Reset Order Summary totals WITHOUT TAX
-    updateOrderSummaryTotals(originalSubtotal, 0, discountAmount);
+    // PERUBAHAN: Reset Order Summary totals dengan 4 parameter
+    updateOrderSummaryTotals(
+        originalSubtotal,
+        0,
+        discountAmount,
+        pointsDiscount // TAMBAHAN
+    );
 }
 
 function selectShipping(radio) {
@@ -1475,8 +1581,13 @@ function selectShipping(radio) {
     if (shippingMethodEl) shippingMethodEl.value = radio.dataset.description;
     if (shippingCostEl) shippingCostEl.value = shippingCost;
 
-    // ADDED: Update Order Summary totals immediately WITHOUT TAX
-    updateOrderSummaryTotals(originalSubtotal, shippingCost, discountAmount);
+    // PERUBAHAN: Update Order Summary totals dengan 4 parameter
+    updateOrderSummaryTotals(
+        originalSubtotal,
+        shippingCost,
+        discountAmount,
+        pointsDiscount // TAMBAHAN
+    );
 
     // Update selection styles
     const shippingOptions = document.getElementById("shipping-options");
@@ -1498,7 +1609,7 @@ function selectShipping(radio) {
 // Order submission handling
 function handleOrderSubmission(paymentMethod) {
     console.log(
-        "🛒 Processing order with payment method (NO TAX + VOUCHER):",
+        "🛒 Processing order with payment method (NO TAX + VOUCHER + POINTS):",
         paymentMethod
     );
 
@@ -1540,11 +1651,26 @@ function handleOrderSubmission(paymentMethod) {
         );
     }
 
+    // TAMBAHAN: Include points data if applied
+    const currentPointsData = getCurrentPointsData();
+    if (currentPointsData) {
+        console.log(
+            "🪙 Adding points data to form submission:",
+            currentPointsData
+        );
+        formData.set("points_used", currentPointsData.points_used);
+        formData.set("points_discount", currentPointsData.discount);
+    } else {
+        // Ensure these fields are set to 0 if no points applied
+        formData.set("points_used", "0");
+        formData.set("points_discount", "0");
+    }
+
     // Ensure all address fields are properly filled
     validateAndFillAddressFields(formData);
 
     // Debug form data
-    console.log("📋 Form data being sent (NO TAX + VOUCHER):");
+    console.log("📋 Form data being sent (NO TAX + VOUCHER + POINTS):");
     for (let [key, value] of formData.entries()) {
         console.log(`${key}: ${value}`);
     }
@@ -2094,6 +2220,39 @@ function togglePassword() {
             passwordFields.classList.remove("hidden");
         } else {
             passwordFields.classList.add("hidden");
+        }
+    }
+}
+
+function checkAppliedPoints() {
+    // Check from session or meta tags
+    const appliedPointsMeta = document.querySelector(
+        'meta[name="applied-points-used"]'
+    );
+    const appliedDiscountMeta = document.querySelector(
+        'meta[name="applied-points-discount"]'
+    );
+
+    if (appliedPointsMeta && appliedDiscountMeta) {
+        const pointsUsed = parseInt(appliedPointsMeta.content) || 0;
+        const discount = parseInt(appliedDiscountMeta.content) || 0;
+
+        if (pointsUsed > 0) {
+            appliedPoints = {
+                points_used: pointsUsed,
+                discount: discount,
+            };
+            pointsDiscount = discount;
+
+            console.log("🪙 Applied points found from server:", appliedPoints);
+
+            // Update totals with points discount
+            updateOrderSummaryTotals(
+                originalSubtotal,
+                getCurrentShippingCost(),
+                discountAmount,
+                pointsDiscount // TAMBAHAN: points discount parameter
+            );
         }
     }
 }

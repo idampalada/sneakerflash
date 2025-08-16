@@ -232,4 +232,5 @@ class PointsTransaction extends Model
 
         return abs($calculatedBalance - $user->points_balance) < 0.01; // Allow for small floating point differences
     }
+    
 }

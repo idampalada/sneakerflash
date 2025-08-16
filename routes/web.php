@@ -328,8 +328,26 @@ Route::prefix('api')->name('api.')->group(function() {
             Route::get('/{id}', [AddressController::class, 'show'])->name('show');
             Route::post('/{id}/set-primary', [AddressController::class, 'setPrimary'])->name('set-primary');
             Route::delete('/{id}', [AddressController::class, 'destroy'])->name('destroy');
+            Route::post('/points/validate', [CheckoutController::class, 'validatePoints'])->name('points.validate');
+    Route::post('/points/remove', [CheckoutController::class, 'removePoints'])->name('points.remove');
+    Route::get('/points/current', [CheckoutController::class, 'getCurrentPoints'])->name('points.current');
+    
+    // Get user points balance
+    Route::get('/points/balance', function() {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+        
+        return response()->json([
+            'success' => true,
+            'balance' => $user->points_balance ?? 0,
+            'formatted_balance' => number_format($user->points_balance ?? 0, 0, ',', '.')
+        ]);
+    })->name('points.balance');
+});
         });
-    });
+   
     
     // Newsletter
     Route::post('/newsletter', function() {
@@ -491,3 +509,13 @@ Route::get('/payment/pending', [CheckoutController::class, 'paymentPending'])
 
 Route::get('/payment/error', [CheckoutController::class, 'paymentError'])
     ->name('payment.error');
+
+    Route::middleware(['auth'])->group(function () {
+    
+    // Points management routes
+    Route::post('/api/points/validate', [CheckoutController::class, 'validatePoints']);
+    Route::post('/api/points/apply', [CheckoutController::class, 'validatePoints']);
+    Route::post('/api/points/remove', [CheckoutController::class, 'removePoints']);
+    Route::get('/api/points/current', [CheckoutController::class, 'getCurrentPoints']);
+    
+});

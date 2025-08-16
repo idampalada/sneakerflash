@@ -675,45 +675,160 @@
     <!-- Available Vouchers Display -->
     <div id="available-vouchers-container" class="hidden"></div>
 </div>
-                        
-                        <!-- Order Totals - NO TAX VERSION + VOUCHER SUPPORT -->
-                        <div class="border-t border-gray-200 pt-4 space-y-2">
-                            <div class="flex justify-between text-sm">
-                                <span class="text-gray-600">Subtotal</span>
-                                <span class="text-gray-900" data-subtotal-display>
-                                    Rp {{ number_format($subtotal ?? 0, 0, ',', '.') }}
-                                </span>
-                            </div>
-                            
-                            <!-- Discount Row - NEW -->
-                           <div class="discount-row flex justify-between text-sm {{ ($discountAmount ?? 0) > 0 ? '' : 'hidden' }}">
-    <span class="text-gray-600">Discount 
-        @if($appliedVoucher ?? false)
-            <span class="text-xs text-green-600">({{ $appliedVoucher['voucher_code'] }})</span>
-        @endif
-    </span>
-    <span class="text-green-600 font-medium" data-discount-display>
-        -Rp {{ number_format($discountAmount ?? 0, 0, ',', '.') }}
-    </span>
+
+<!-- POINTS EXCHANGE SECTION - NEW -->
+@if(Auth::check() && (Auth::user()->points_balance ?? 0) > 0)
+<div class="border-t border-gray-200 pt-4 mb-4">
+    <h4 class="text-sm font-medium text-gray-900 mb-3">🪙 Tukar Poin</h4>
+    
+    <!-- Points Message Container -->
+    <div id="points-message-container" class="hidden"></div>
+    
+    <!-- Points Exchange Toggle -->
+    <div class="flex items-center justify-between p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors points-toggle-container">
+        <div class="flex items-center">
+            <input type="checkbox" 
+                   id="use-points-toggle" 
+                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                   data-user-points="{{ Auth::user()->points_balance ?? 0 }}">
+            <div class="ml-3">
+                <label for="use-points-toggle" class="text-sm font-medium text-gray-900 cursor-pointer">
+                    Tukarkan <strong>{{ number_format(Auth::user()->points_balance ?? 0, 0, ',', '.') }} Point</strong>
+                </label>
+                <p class="text-xs text-gray-500">
+                    Hemat Rp {{ number_format(Auth::user()->points_balance ?? 0, 0, ',', '.') }} dengan menggunakan poin Anda
+                </p>
+            </div>
+        </div>
+        <div class="text-right">
+            <div class="text-sm font-semibold text-green-600">
+                -Rp {{ number_format(Auth::user()->points_balance ?? 0, 0, ',', '.') }}
+            </div>
+            <div class="text-xs text-gray-500">Potongan</div>
+        </div>
+    </div>
+    
+    <!-- Points Details (Hidden by default) -->
+    <div id="points-details" class="hidden mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <div class="flex items-start">
+            <svg class="w-4 h-4 text-yellow-600 mt-0.5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <div class="text-xs text-yellow-800">
+                <p class="font-medium">Cara Kerja Penukaran Poin:</p>
+                <ul class="mt-1 space-y-1">
+                    <li>• 1 Poin = Rp 1 potongan harga</li>
+                    <li>• Poin dapat dikombinasikan dengan voucher</li>
+                    <li>• Poin yang digunakan tidak dapat dikembalikan</li>
+                    <li>• Maksimal penggunaan: {{ number_format(Auth::user()->points_balance ?? 0, 0, ',', '.') }} poin</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Points Input Section (Custom Amount) -->
+    <div id="points-input-section" class="hidden mt-3">
+        <div class="flex space-x-2">
+            <input type="number" 
+                   id="points-amount" 
+                   placeholder="Masukkan jumlah poin"
+                   min="1"
+                   max="{{ Auth::user()->points_balance ?? 0 }}"
+                   class="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <button type="button" 
+                    id="apply-points-btn"
+                    class="px-4 py-2 bg-yellow-600 text-white text-sm rounded-md hover:bg-yellow-700 transition-colors font-medium">
+                Terapkan
+            </button>
+        </div>
+        <div class="mt-2 flex justify-between text-xs text-gray-600">
+            <span>Tersedia: {{ number_format(Auth::user()->points_balance ?? 0, 0, ',', '.') }} poin</span>
+            <button type="button" id="use-all-points" class="text-blue-600 hover:text-blue-800 font-medium">
+                Gunakan Semua
+            </button>
+        </div>
+    </div>
+    
+    <!-- Applied Points Display -->
+    <div id="applied-points-container" class="hidden mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center">
+                <svg class="w-4 h-4 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div>
+                    <p class="text-sm font-medium text-green-800">
+                        <span id="used-points-amount">0</span> poin digunakan
+                    </p>
+                    <p class="text-xs text-green-700">
+                        Potongan: Rp <span id="points-discount-amount">0</span>
+                    </p>
+                </div>
+            </div>
+            <button type="button" 
+                    id="remove-points-btn"
+                    class="text-red-600 hover:text-red-800 text-sm font-medium">
+                Hapus
+            </button>
+        </div>
+    </div>
+    
+    <!-- Hidden Inputs for Points -->
+    <input type="hidden" name="points_used" id="points_used" value="{{ $pointsUsed ?? 0 }}">
+    <input type="hidden" name="points_discount" id="points_discount" value="{{ $pointsDiscount ?? 0 }}">
 </div>
-                            
-                            <div class="flex justify-between text-sm">
-                                <span class="text-gray-600">Shipping</span>
-                                <span class="text-gray-900" id="shipping-cost-display" data-shipping-display>
-                                    To be calculated
-                                </span>
-                            </div>
-                            
-                            <!-- REMOVED TAX DISPLAY COMPLETELY -->
-                            <div class="border-t border-gray-200 pt-2">
-                                <div class="flex justify-between text-base font-medium">
-                                    <span class="text-gray-900">Total</span>
-                                    <span class="text-gray-900" id="total-display" data-total-display>
-                                        Rp {{ number_format(($subtotal ?? 0) - ($discountAmount ?? 0), 0, ',', '.') }}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
+@endif
+
+{{-- Update Order Totals section untuk menyertakan Points Discount --}}
+<!-- Order Totals - WITH POINTS SUPPORT -->
+<div class="border-t border-gray-200 pt-4 space-y-2">
+    <div class="flex justify-between text-sm">
+        <span class="text-gray-600">Subtotal</span>
+        <span class="text-gray-900" data-subtotal-display>
+            Rp {{ number_format($subtotal ?? 0, 0, ',', '.') }}
+        </span>
+    </div>
+    
+    <!-- Voucher Discount Row -->
+    <div class="discount-row flex justify-between text-sm {{ ($discountAmount ?? 0) > 0 ? '' : 'hidden' }}">
+        <span class="text-gray-600">Voucher Discount 
+            @if($appliedVoucher ?? false)
+                <span class="text-xs text-green-600">({{ $appliedVoucher['voucher_code'] }})</span>
+            @endif
+        </span>
+        <span class="text-green-600 font-medium" data-discount-display>
+            -Rp {{ number_format($discountAmount ?? 0, 0, ',', '.') }}
+        </span>
+    </div>
+    
+    <!-- Points Discount Row - NEW -->
+    <div class="points-discount-row flex justify-between text-sm {{ ($pointsDiscount ?? 0) > 0 ? '' : 'hidden' }}">
+        <span class="text-gray-600">Points Discount</span>
+        <span class="text-yellow-600 font-medium" data-points-discount-display>
+            -Rp {{ number_format($pointsDiscount ?? 0, 0, ',', '.') }}
+        </span>
+    </div>
+    
+    <!-- Shipping Cost Row -->
+    <div class="flex justify-between text-sm">
+        <span class="text-gray-600">Shipping</span>
+        <span class="text-gray-900" id="shipping-cost-display" data-shipping-display>
+            To be calculated
+        </span>
+    </div>
+    
+    <!-- Total Row -->
+    <div class="border-t border-gray-200 pt-2">
+        <div class="flex justify-between text-base font-medium">
+            <span class="text-gray-900">Total</span>
+            <span class="text-gray-900" id="total-display" data-total-display>
+                Rp {{ number_format(($subtotal ?? 0) - ($discountAmount ?? 0) - ($pointsDiscount ?? 0), 0, ',', '.') }}
+            </span>
+        </div>
+    </div>
+</div>
+                        
+                       
 
                         <!-- Order Info - Additional helpful info -->
                         @if(isset($cartItems) && $cartItems->count() > 0)
@@ -973,4 +1088,13 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="{{ asset('js/enhanced-checkout.js') }}"></script>
 
 <script src="{{ asset('js/voucher-checkout.js') }}"></script>
+
+<script src="{{ asset('js/points-checkout.js') }}"></script>
+@if(Auth::check())
+    <meta name="user-points-balance" content="{{ Auth::user()->points_balance ?? 0 }}">
+    @if(($appliedPoints ?? false) && ($pointsUsed ?? 0) > 0)
+        <meta name="applied-points-used" content="{{ $pointsUsed }}">
+        <meta name="applied-points-discount" content="{{ $pointsDiscount }}">
+    @endif
+@endif
 @endsection
