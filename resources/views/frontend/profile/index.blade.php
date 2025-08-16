@@ -30,8 +30,115 @@
         @endif
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <!-- Profile Information Form -->
-            <div class="lg:col-span-2">
+            <!-- Left Column - Profile Information Form -->
+            <div class="lg:col-span-2 space-y-6">
+                
+                <!-- Customer Tier Card -->
+                @php
+                    $tierColor = 'gray';
+                    $currentTier = $user->getCustomerTier() ?? 'basic';
+                    if ($currentTier === 'ultimate') $tierColor = 'purple';
+                    elseif ($currentTier === 'advance') $tierColor = 'blue';
+                @endphp
+                
+                <div class="bg-gradient-to-r from-{{ $tierColor }}-500 to-{{ $tierColor }}-600 rounded-lg shadow-lg text-white p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="text-2xl font-bold">{{ $user->getCustomerTierLabel() ?? 'Basic Member' }}</h3>
+                            <p class="text-white opacity-80">Your current membership tier</p>
+                        </div>
+                        <div class="text-4xl">
+                            @if($currentTier === 'ultimate')
+                                💎
+                            @elseif($currentTier === 'advance')
+                                🥇
+                            @else
+                                🥉
+                            @endif
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <div class="text-white opacity-80 text-sm">6-Month Spending</div>
+                            <div class="text-xl font-bold">
+                                {{ method_exists($user, 'getFormattedSpending6Months') ? $user->getFormattedSpending6Months() : 'Rp 0' }}
+                            </div>
+                        </div>
+                        <div>
+                            <div class="text-white opacity-80 text-sm">Points Rate</div>
+                            <div class="text-xl font-bold">
+                                {{ method_exists($user, 'getPointsPercentage') ? $user->getPointsPercentage() : '1' }}%
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Next Tier Progress -->
+                    @if(method_exists($user, 'getNextTierRequirement'))
+                        @php $nextTier = $user->getNextTierRequirement(); @endphp
+                        @if($nextTier['remaining'] > 0)
+                            <div class="bg-white bg-opacity-20 rounded-lg p-4">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-sm text-white opacity-80">Progress to {{ $nextTier['tier'] }}</span>
+                                    <span class="text-sm font-medium">
+                                        {{ round((($nextTier['required'] - $nextTier['remaining']) / $nextTier['required']) * 100, 1) }}%
+                                    </span>
+                                </div>
+                                <div class="w-full bg-white bg-opacity-20 rounded-full h-2 mb-2">
+                                    <div class="bg-white h-2 rounded-full" style="width: {{ round((($nextTier['required'] - $nextTier['remaining']) / $nextTier['required']) * 100, 1) }}%"></div>
+                                </div>
+                                <div class="text-xs text-white opacity-80">
+                                    Spend Rp {{ number_format($nextTier['remaining'], 0, ',', '.') }} more in {{ $nextTier['period'] }} to reach {{ $nextTier['tier'] }}
+                                </div>
+                            </div>
+                        @else
+                            <div class="bg-white bg-opacity-20 rounded-lg p-4 text-center">
+                                <div class="text-sm text-white opacity-80">🎉 You've reached the highest tier!</div>
+                            </div>
+                        @endif
+                    @else
+                        <div class="bg-white bg-opacity-20 rounded-lg p-4">
+                            <div class="text-sm text-white opacity-80">Tier system is being set up...</div>
+                        </div>
+                    @endif
+                </div>
+
+                <!-- Points Balance Card -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-semibold text-gray-900">Points Balance</h3>
+                        <div class="text-2xl">🪙</div>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-4 text-center">
+                        <div class="p-4 bg-green-50 rounded-lg">
+                            <div class="text-2xl font-bold text-green-600">
+                                {{ method_exists($user, 'getFormattedPointsBalance') ? $user->getFormattedPointsBalance() : number_format($user->points_balance ?? 0, 0, ',', '.') }}
+                            </div>
+                            <div class="text-sm text-gray-600">Available Points</div>
+                        </div>
+                        <div class="p-4 bg-blue-50 rounded-lg">
+                            <div class="text-2xl font-bold text-blue-600">
+                                {{ number_format($user->total_points_earned ?? 0, 0, ',', '.') }}
+                            </div>
+                            <div class="text-sm text-gray-600">Total Earned</div>
+                        </div>
+                        <div class="p-4 bg-purple-50 rounded-lg">
+                            <div class="text-2xl font-bold text-purple-600">
+                                {{ number_format($user->total_points_redeemed ?? 0, 0, ',', '.') }}
+                            </div>
+                            <div class="text-sm text-gray-600">Total Redeemed</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 p-3 bg-gray-50 rounded-lg">
+                        <div class="text-sm text-gray-600">
+                            <strong>How it works:</strong> Earn {{ method_exists($user, 'getPointsPercentage') ? $user->getPointsPercentage() : '1' }}% points on every purchase with your {{ $user->getCustomerTierLabel() ?? 'Basic Member' }} status.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Profile Information Form -->
                 <div class="bg-white rounded-lg shadow-md p-6">
                     <div class="flex justify-between items-center mb-6">
                         <h2 class="text-xl font-semibold text-gray-900">Profile Information</h2>
@@ -148,7 +255,7 @@
                                 </p>
                             </div>
 
-                            {{-- NEW: Zodiac Display --}}
+                            {{-- Zodiac Display --}}
                             @if($user->zodiac && isset($zodiacInfo))
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -185,7 +292,7 @@
                                     </span>
                                 </div>
                                 <div class="w-full bg-blue-200 rounded-full h-2 mt-2">
-                                    <div class="bg-blue-600 h-2 rounded-full" data-width="{{ $percentage }}"></div>
+                                    <div class="bg-blue-600 h-2 rounded-full profile-progress-bar" data-width="{{ $percentage }}"></div>
                                 </div>
                                 @if($percentage < 100)
                                 <p class="text-xs text-blue-700 mt-2">
@@ -349,7 +456,7 @@
                                     <p class="text-xs text-blue-600 mt-1">This field is protected and cannot be modified</p>
                                 @endif
 
-                                {{-- NEW: Real-time Zodiac Preview --}}
+                                {{-- Real-time Zodiac Preview --}}
                                 <div id="zodiac-preview" class="mt-3 p-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hidden">
                                     <div class="flex items-center space-x-3">
                                         <span id="zodiac-symbol" class="text-2xl"></span>
@@ -395,7 +502,70 @@
 
             <!-- Right Sidebar -->
             <div class="space-y-6">
-                {{-- NEW: Zodiac Info Card --}}
+                
+                <!-- Tier Benefits Info -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4">Tier Benefits</h2>
+                    
+                    <div class="space-y-3">
+                        <!-- Basic Tier -->
+                        @php $isBasic = $currentTier === 'basic'; @endphp
+                        <div class="p-3 rounded-lg {{ $isBasic ? 'bg-gray-100 border-2 border-gray-400' : 'bg-gray-50' }}">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-medium text-gray-900">🥉 Basic Member</span>
+                                @if($isBasic)
+                                    <span class="px-2 py-1 bg-gray-500 text-white text-xs rounded-full">Current</span>
+                                @endif
+                            </div>
+                            <div class="text-sm text-gray-600">
+                                • 1% points on every purchase<br>
+                                • Standard customer support<br>
+                                • Default tier for new customers
+                            </div>
+                        </div>
+                        
+                        <!-- Advance Tier -->
+                        @php $isAdvance = $currentTier === 'advance'; @endphp
+                        <div class="p-3 rounded-lg {{ $isAdvance ? 'bg-blue-100 border-2 border-blue-400' : 'bg-blue-50' }}">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-medium text-blue-900">🥇 Advance Member</span>
+                                @if($isAdvance)
+                                    <span class="px-2 py-1 bg-blue-500 text-white text-xs rounded-full">Current</span>
+                                @endif
+                            </div>
+                            <div class="text-sm text-blue-700">
+                                • 2.5% points on every purchase<br>
+                                • Priority customer support<br>
+                                • Requires Rp 5M spending in 6 months
+                            </div>
+                        </div>
+                        
+                        <!-- Ultimate Tier -->
+                        @php $isUltimate = $currentTier === 'ultimate'; @endphp
+                        <div class="p-3 rounded-lg {{ $isUltimate ? 'bg-purple-100 border-2 border-purple-400' : 'bg-purple-50' }}">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-medium text-purple-900">💎 Ultimate Member</span>
+                                @if($isUltimate)
+                                    <span class="px-2 py-1 bg-purple-500 text-white text-xs rounded-full">Current</span>
+                                @endif
+                            </div>
+                            <div class="text-sm text-purple-700">
+                                • 5% points on every purchase<br>
+                                • VIP customer support<br>
+                                • Exclusive offers & early access<br>
+                                • Requires Rp 10M spending in 6 months
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <div class="text-xs text-yellow-700">
+                            <strong>Note:</strong> Tier evaluation happens monthly. If spending drops below tier requirement for 6 months, tier will be downgraded.
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Zodiac Info Card --}}
                 @if($user->zodiac && isset($zodiacInfo))
                 <div class="bg-white rounded-lg shadow-md p-6">
                     <h2 class="text-xl font-semibold mb-4">Your Zodiac</h2>
@@ -493,14 +663,30 @@
                     
                     <div class="grid grid-cols-1 gap-4">
                         <div class="text-center p-4 bg-blue-50 rounded-lg">
-                            <div class="text-2xl font-bold text-blue-600">{{ $totalOrders ?? 0 }}</div>
+                            <div class="text-2xl font-bold text-blue-600">
+                                {{ $user->total_orders ?? $totalOrders ?? 0 }}
+                            </div>
                             <div class="text-sm text-gray-600">Total Orders</div>
                         </div>
                         <div class="text-center p-4 bg-green-50 rounded-lg">
                             <div class="text-2xl font-bold text-green-600">
-                                Rp {{ number_format($totalSpent ?? 0, 0, ',', '.') }}
+                                @if(method_exists($user, 'getFormattedTotalSpent'))
+                                    {{ $user->getFormattedTotalSpent() }}
+                                @else
+                                    Rp {{ number_format($totalSpent ?? 0, 0, ',', '.') }}
+                                @endif
                             </div>
-                            <div class="text-sm text-gray-600">Total Spent</div>
+                            <div class="text-sm text-gray-600">Total Spent (All Time)</div>
+                        </div>
+                        <div class="text-center p-4 bg-purple-50 rounded-lg">
+                            <div class="text-2xl font-bold text-purple-600">
+                                @if(method_exists($user, 'getFormattedAverageOrderValue'))
+                                    {{ $user->getFormattedAverageOrderValue() }}
+                                @else
+                                    Rp {{ number_format(($user->total_orders ?? 0) > 0 ? ($user->total_spent ?? 0) / ($user->total_orders ?? 1) : 0, 0, ',', '.') }}
+                                @endif
+                            </div>
+                            <div class="text-sm text-gray-600">Average Order</div>
                         </div>
                     </div>
 
@@ -532,26 +718,133 @@
                                     <span class="text-yellow-600">⚠ Email Not Verified</span>
                                 @endif
                                 
-                                @if($isProfileLocked ?? false)
-                                    <br><span class="text-blue-600">✅ Profile Completed</span>
+                                @if(method_exists($user, 'isProfileComplete') ? $user->isProfileComplete() : ($isProfileLocked ?? false))
+                                    <br><span class="text-green-600">✅ Profile Complete</span>
                                 @else
                                     <br><span class="text-orange-600">⚠ Profile Incomplete</span>
                                 @endif
                                 
                                 <br><span class="text-green-600">📍 {{ $addressCount }} Address{{ $addressCount != 1 ? 'es' : '' }}</span>
                                 
-                                {{-- NEW: Zodiac Status --}}
+                                {{-- Zodiac Status --}}
                                 @if($user->zodiac)
                                     <br><span class="text-purple-600">✨ Zodiac: {{ $user->zodiac }}</span>
+                                @endif
+
+                                {{-- Tier Status --}}
+                                <br><span class="text-{{ $currentTier === 'ultimate' ? 'purple' : ($currentTier === 'advance' ? 'blue' : 'gray') }}-600">
+                                    @if($currentTier === 'ultimate')
+                                        💎 Ultimate Member
+                                    @elseif($currentTier === 'advance')
+                                        🥇 Advance Member
+                                    @else
+                                        🥉 Basic Member
+                                    @endif
+                                </span>
+
+                                {{-- Points Status --}}
+                                @if(($user->points_balance ?? 0) > 0)
+                                    <br><span class="text-yellow-600">🪙 {{ number_format($user->points_balance ?? 0, 0, ',', '.') }} Points</span>
                                 @endif
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Recent Activity -->
+                @if((method_exists($user, 'getLastOrderDate') && $user->getLastOrderDate()) || $user->spending_updated_at || $user->last_tier_evaluation)
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4">Recent Activity</h2>
+                    
+                    <div class="space-y-3">
+                        @if(method_exists($user, 'getLastOrderDate') && $user->getLastOrderDate())
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                            <div>
+                                <div class="font-medium text-gray-900">Last Order</div>
+                                <div class="text-sm text-gray-600">
+                                    {{ $user->getLastOrderDate()->format('M d, Y') }}
+                                </div>
+                            </div>
+                            <div class="text-2xl">📦</div>
+                        </div>
+                        @endif
+                        
+                        @if($user->spending_updated_at)
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                            <div>
+                                <div class="font-medium text-gray-900">Stats Updated</div>
+                                <div class="text-sm text-gray-600">
+                                    {{ $user->spending_updated_at->format('M d, Y H:i') }}
+                                </div>
+                            </div>
+                            <div class="text-2xl">📊</div>
+                        </div>
+                        @endif
+                        
+                        @if($user->last_tier_evaluation)
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                            <div>
+                                <div class="font-medium text-gray-900">Tier Evaluated</div>
+                                <div class="text-sm text-gray-600">
+                                    {{ $user->last_tier_evaluation->format('M d, Y') }}
+                                </div>
+                            </div>
+                            <div class="text-2xl">🏆</div>
+                        </div>
+                        @endif
+                    </div>
+                </div>
+                @endif
             </div>
         </div>
     </div>
 </div>
+
+<style>
+/* Fix for CSS issues */
+.profile-progress-bar {
+    transition: width 0.5s ease-in-out;
+}
+
+/* Tier card gradient fixes */
+.bg-gradient-to-r.from-gray-500.to-gray-600 {
+    background: linear-gradient(to right, #6B7280, #4B5563);
+}
+
+.bg-gradient-to-r.from-blue-500.to-blue-600 {
+    background: linear-gradient(to right, #3B82F6, #2563EB);
+}
+
+.bg-gradient-to-r.from-purple-500.to-purple-600 {
+    background: linear-gradient(to right, #8B5CF6, #7C3AED);
+}
+
+/* Responsive fixes */
+@media (max-width: 1024px) {
+    .grid.lg\\:grid-cols-3 {
+        grid-template-columns: 1fr;
+    }
+    
+    .lg\\:col-span-2 {
+        grid-column: span 1;
+    }
+}
+
+/* Button hover effects */
+.transition-colors {
+    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+/* Progress bar animation */
+@keyframes progressFill {
+    from { width: 0%; }
+    to { width: var(--progress-width); }
+}
+
+.profile-progress-bar.animate {
+    animation: progressFill 1s ease-out;
+}
+</style>
 
 <script>
 // Zodiac calculation function
@@ -602,12 +895,15 @@ function calculateZodiac(birthdate) {
 
 document.addEventListener('DOMContentLoaded', function() {
     // Set width for progress bar using data attribute
-    const progressBar = document.querySelector('[data-width]');
+    const progressBar = document.querySelector('.profile-progress-bar[data-width]');
     if (progressBar) {
         const width = progressBar.getAttribute('data-width');
+        progressBar.style.setProperty('--progress-width', width + '%');
         progressBar.style.width = width + '%';
+        progressBar.classList.add('animate');
     }
 
+    // Edit profile functionality
     const editBtn = document.getElementById('edit-profile-btn');
     const cancelBtn = document.getElementById('cancel-edit-btn');
     const profileDisplay = document.getElementById('profile-display');
@@ -639,7 +935,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // NEW: Birth date change handler for zodiac preview
+    // Birth date change handler for zodiac preview
     const birthdateInput = document.getElementById('birthdate');
     if (birthdateInput) {
         birthdateInput.addEventListener('change', function() {

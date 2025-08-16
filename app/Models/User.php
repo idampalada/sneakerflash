@@ -44,10 +44,17 @@ class User extends Authenticatable implements FilamentUser
         'google_id',
         'avatar',
         'email_verified_at',
-        'total_spent',           // ADDED - Stored spending
-        'total_orders',          // ADDED - Stored order count
-        'spending_updated_at',   // ADDED - Last sync timestamp
-        'customer_tier',         // ADDED - Stored customer tier
+        'total_spent',           // EXISTING - Stored spending
+        'total_orders',          // EXISTING - Stored order count
+        'spending_updated_at',   // EXISTING - Last sync timestamp
+        'customer_tier',         // UPDATED - Now supports basic/advance/ultimate
+        // NEW FIELDS FOR TIER & POINTS SYSTEM
+        'spending_6_months',     // NEW - Spending in last 6 months
+        'tier_period_start',     // NEW - Start of current tier evaluation period
+        'last_tier_evaluation',  // NEW - Last time tier was evaluated
+        'points_balance',        // NEW - Current available points
+        'total_points_earned',   // NEW - Total points earned lifetime
+        'total_points_redeemed', // NEW - Total points redeemed lifetime
     ];
 
     /**
@@ -66,8 +73,14 @@ class User extends Authenticatable implements FilamentUser
         return [
             'email_verified_at' => 'datetime',
             'birthdate' => 'date',
-            'spending_updated_at' => 'datetime',    // ADDED
-            'total_spent' => 'decimal:2',           // ADDED
+            'spending_updated_at' => 'datetime',    // EXISTING
+            'tier_period_start' => 'datetime',      // NEW
+            'last_tier_evaluation' => 'datetime',   // NEW
+            'total_spent' => 'decimal:2',           // EXISTING
+            'spending_6_months' => 'decimal:2',     // NEW
+            'points_balance' => 'decimal:2',        // NEW
+            'total_points_earned' => 'decimal:2',   // NEW
+            'total_points_redeemed' => 'decimal:2', // NEW
             'password' => 'hashed',
         ];
     }
@@ -103,12 +116,12 @@ class User extends Authenticatable implements FilamentUser
     }
 
     // =====================================
-    // SPENDING-BASED SCOPES - NEW
+    // SPENDING-BASED SCOPES - UPDATED
     // =====================================
 
     public function scopeHighValueCustomers($query)
     {
-        return $query->where('total_spent', '>=', 5000000);
+        return $query->where('spending_6_months', '>=', 5000000); // Updated to use 6-month spending
     }
 
     public function scopeByTier($query, $tier)
@@ -140,6 +153,27 @@ class User extends Authenticatable implements FilamentUser
         return $query;
     }
 
+    // NEW SCOPES FOR TIER SYSTEM
+    public function scopeBasicTier($query)
+    {
+        return $query->where('customer_tier', 'basic');
+    }
+
+    public function scopeAdvanceTier($query)
+    {
+        return $query->where('customer_tier', 'advance');
+    }
+
+    public function scopeUltimateTier($query)
+    {
+        return $query->where('customer_tier', 'ultimate');
+    }
+
+    public function scopeWithPoints($query)
+    {
+        return $query->where('points_balance', '>', 0);
+    }
+
     // =====================================
     // E-COMMERCE RELATIONSHIPS
     // =====================================
@@ -164,8 +198,14 @@ class User extends Authenticatable implements FilamentUser
         return $this->hasMany(CouponUsage::class);
     }
 
+    // NEW RELATIONSHIP FOR POINTS
+    public function pointsTransactions(): HasMany
+    {
+        return $this->hasMany(PointsTransaction::class);
+    }
+
     // =====================================
-    // ADDRESS RELATIONSHIPS & METHODS - FIXED
+    // ADDRESS RELATIONSHIPS & METHODS - UNCHANGED
     // =====================================
 
     /**
@@ -225,7 +265,7 @@ class User extends Authenticatable implements FilamentUser
     }
 
     // =====================================
-    // WISHLIST RELATIONSHIPS & METHODS
+    // WISHLIST RELATIONSHIPS & METHODS - UNCHANGED
     // =====================================
 
     /**
@@ -324,7 +364,7 @@ class User extends Authenticatable implements FilamentUser
     }
 
     // =====================================
-    // ACCESSORS
+    // ACCESSORS - UNCHANGED
     // =====================================
 
     public function getAvatarUrlAttribute()
@@ -342,7 +382,7 @@ class User extends Authenticatable implements FilamentUser
     }
 
     // =====================================
-    // CART HELPER METHODS
+    // CART HELPER METHODS - UNCHANGED
     // =====================================
 
     /**
@@ -376,7 +416,7 @@ class User extends Authenticatable implements FilamentUser
     }
 
     // =====================================
-    // SPENDING METHODS - HYBRID APPROACH
+    // NEW TIER SYSTEM - BASIC/ADVANCE/ULTIMATE
     // =====================================
 
     /**
@@ -385,30 +425,269 @@ class User extends Authenticatable implements FilamentUser
     private array $paidStatuses = ['paid', 'processing', 'shipped', 'delivered'];
 
     /**
-     * Update spending statistics from orders table
-     * This is the main method to sync stored columns with real data
+     * Calculate tier from 6-month spending amount (NEW LOGIC)
+     */
+    private function calculateTierFromSpending($spending6Months)
+    {
+        if ($spending6Months >= 10000000) return 'ultimate';    // 10 juta IDR dalam 6 bulan
+        if ($spending6Months >= 5000000) return 'advance';     // 5 juta IDR dalam 6 bulan
+        return 'basic';
+    }
+
+    /**
+     * Get spending in the last 6 months from paid orders
+     */
+    public function getSpending6Months()
+    {
+        $sixMonthsAgo = now()->subMonths(6);
+        
+        return $this->orders()
+                    ->whereIn('status', $this->paidStatuses)
+                    ->where('created_at', '>=', $sixMonthsAgo)
+                    ->sum('total_amount');
+    }
+
+    /**
+     * Evaluate and update customer tier based on 6-month spending
+     */
+    public function evaluateCustomerTier()
+    {
+        $spending6Months = $this->getSpending6Months();
+        $newTier = $this->calculateTierFromSpending($spending6Months);
+        $oldTier = $this->customer_tier;
+        
+        $this->update([
+            'spending_6_months' => $spending6Months,
+            'customer_tier' => $newTier,
+            'last_tier_evaluation' => now()
+        ]);
+        
+        // Initialize tier period if not set
+        if (!$this->tier_period_start) {
+            $this->update(['tier_period_start' => now()->subMonths(6)]);
+        }
+        
+        Log::info('Customer tier evaluated', [
+            'user_id' => $this->id,
+            'old_tier' => $oldTier,
+            'new_tier' => $newTier,
+            'spending_6_months' => $spending6Months,
+            'tier_changed' => $oldTier !== $newTier
+        ]);
+        
+        return $this;
+    }
+
+    /**
+     * Get customer tier (current stored value)
+     */
+    public function getCustomerTier()
+    {
+        return $this->customer_tier ?: 'basic';
+    }
+
+    /**
+     * Get customer tier display label (UPDATED)
+     */
+    public function getCustomerTierLabel()
+    {
+        return match($this->getCustomerTier()) {
+            'ultimate' => 'Ultimate Member',
+            'advance' => 'Advance Member',
+            'basic' => 'Basic Member',
+            // Legacy support for old tiers
+            'platinum' => 'Ultimate Member',
+            'gold' => 'Advance Member',
+            'silver' => 'Basic Member',
+            'bronze' => 'Basic Member',
+            'new' => 'Basic Member',
+            default => 'Basic Member'
+        };
+    }
+
+    /**
+     * Get customer tier color for UI badges (UPDATED)
+     */
+    public function getCustomerTierColor()
+    {
+        return match($this->getCustomerTier()) {
+            'ultimate' => '#8B5CF6',    // Purple
+            'advance' => '#3B82F6',     // Blue  
+            'basic' => '#6B7280',       // Gray
+            // Legacy support for old tiers
+            'platinum' => '#8B5CF6',    // Purple
+            'gold' => '#3B82F6',        // Blue
+            'silver' => '#6B7280',      // Gray
+            'bronze' => '#6B7280',      // Gray
+            'new' => '#6B7280',         // Gray
+            default => '#6B7280'
+        };
+    }
+
+    /**
+     * Get tier requirements for next level (UPDATED)
+     */
+    public function getNextTierRequirement()
+    {
+        $currentSpending6Months = $this->spending_6_months ?? 0;
+        
+        return match($this->getCustomerTier()) {
+            'basic' => [
+                'tier' => 'Advance Member', 
+                'required' => 5000000, 
+                'remaining' => max(0, 5000000 - $currentSpending6Months),
+                'period' => '6 months'
+            ],
+            'advance' => [
+                'tier' => 'Ultimate Member', 
+                'required' => 10000000, 
+                'remaining' => max(0, 10000000 - $currentSpending6Months),
+                'period' => '6 months'
+            ],
+            'ultimate' => [
+                'tier' => 'Ultimate Member', 
+                'required' => 10000000, 
+                'remaining' => 0,
+                'period' => '6 months'
+            ],
+            // Legacy tier support
+            'new', 'bronze', 'silver' => [
+                'tier' => 'Advance Member', 
+                'required' => 5000000, 
+                'remaining' => max(0, 5000000 - $currentSpending6Months),
+                'period' => '6 months'
+            ],
+            'gold', 'platinum' => [
+                'tier' => 'Ultimate Member', 
+                'required' => 10000000, 
+                'remaining' => 0,
+                'period' => '6 months'
+            ],
+        };
+    }
+
+    /**
+     * Check if tier evaluation is needed (monthly check)
+     */
+    public function needsTierEvaluation()
+    {
+        if (!$this->last_tier_evaluation) {
+            return true;
+        }
+        
+        return $this->last_tier_evaluation->diffInDays(now()) >= 30;
+    }
+
+    // =====================================
+    // POINTS SYSTEM - NEW
+    // =====================================
+
+    /**
+     * Get points percentage based on tier
+     */
+    public function getPointsPercentage()
+    {
+        return match($this->getCustomerTier()) {
+            'ultimate' => 5.0,     // 5%
+            'advance' => 2.5,      // 2.5%
+            'basic' => 1.0,        // 1%
+            // Legacy tier support
+            'platinum' => 5.0,
+            'gold' => 2.5,
+            'silver' => 1.0,
+            'bronze' => 1.0,
+            'new' => 1.0,
+            default => 1.0
+        };
+    }
+
+    /**
+     * Calculate points from purchase amount
+     */
+    public function calculatePointsFromPurchase($amount)
+    {
+        $percentage = $this->getPointsPercentage();
+        return round(($amount * $percentage) / 100, 2);
+    }
+
+    /**
+     * Add points from purchase
+     */
+    public function addPointsFromPurchase($orderAmount)
+    {
+        $pointsEarned = $this->calculatePointsFromPurchase($orderAmount);
+        
+        $this->increment('points_balance', $pointsEarned);
+        $this->increment('total_points_earned', $pointsEarned);
+        
+        Log::info('Points earned from purchase', [
+            'user_id' => $this->id,
+            'order_amount' => $orderAmount,
+            'tier' => $this->getCustomerTier(),
+            'points_percentage' => $this->getPointsPercentage(),
+            'points_earned' => $pointsEarned,
+            'new_balance' => $this->points_balance
+        ]);
+        
+        return $pointsEarned;
+    }
+
+    /**
+     * Redeem points
+     */
+    public function redeemPoints($amount)
+    {
+        if ($amount > $this->points_balance) {
+            throw new \Exception('Insufficient points balance');
+        }
+        
+        $this->decrement('points_balance', $amount);
+        $this->increment('total_points_redeemed', $amount);
+        
+        Log::info('Points redeemed', [
+            'user_id' => $this->id,
+            'points_redeemed' => $amount,
+            'remaining_balance' => $this->points_balance
+        ]);
+        
+        return $this;
+    }
+
+    /**
+     * Get formatted points balance
+     */
+    public function getFormattedPointsBalance()
+    {
+        return number_format($this->points_balance ?? 0, 0, ',', '.');
+    }
+
+    // =====================================
+    // SPENDING METHODS - UPDATED
+    // =====================================
+
+    /**
+     * Update spending statistics from orders table (UPDATED)
      */
     public function updateSpendingStats()
     {
-        // Include all statuses after 'paid' as completed revenue
+        // Calculate total spent (all time)
         $totalSpent = $this->orders()->whereIn('status', $this->paidStatuses)->sum('total_amount');
         $totalOrders = $this->orders()->whereIn('status', $this->paidStatuses)->count();
-        
-        // Calculate tier based on spending
-        $tier = $this->calculateTierFromSpending($totalSpent);
         
         $this->update([
             'total_spent' => $totalSpent,
             'total_orders' => $totalOrders,
-            'customer_tier' => $tier,
             'spending_updated_at' => now()
         ]);
+        
+        // Also evaluate tier based on 6-month spending
+        $this->evaluateCustomerTier();
         
         Log::info('Updated spending stats for user', [
             'user_id' => $this->id,
             'total_spent' => $totalSpent,
             'total_orders' => $totalOrders,
-            'customer_tier' => $tier,
+            'customer_tier' => $this->customer_tier,
             'paid_statuses' => $this->paidStatuses
         ]);
         
@@ -417,14 +696,12 @@ class User extends Authenticatable implements FilamentUser
 
     /**
      * Get total amount spent by user
-     * @param bool $useStored Use stored column (fast) or calculate real-time (accurate)
      */
     public function getTotalSpent($useStored = true)
     {
         if ($useStored) {
             return $this->total_spent ?? 0;
         }
-        // Fallback to real-time calculation - include all paid statuses
         return $this->orders()->whereIn('status', $this->paidStatuses)->sum('total_amount');
     }
 
@@ -478,7 +755,7 @@ class User extends Authenticatable implements FilamentUser
     }
 
     // =====================================
-    // REAL-TIME SPENDING ANALYSIS
+    // REAL-TIME SPENDING ANALYSIS - UNCHANGED
     // =====================================
 
     /**
@@ -538,81 +815,7 @@ class User extends Authenticatable implements FilamentUser
     }
 
     // =====================================
-    // CUSTOMER TIER SYSTEM - UPDATED WITH STORED COLUMN
-    // =====================================
-
-    /**
-     * Calculate tier from spending amount (helper method)
-     */
-    private function calculateTierFromSpending($spending)
-    {
-        if ($spending >= 10000000) return 'platinum';    // 10 juta IDR
-        if ($spending >= 5000000) return 'gold';         // 5 juta IDR
-        if ($spending >= 1000000) return 'silver';       // 1 juta IDR
-        if ($spending > 0) return 'bronze';
-        return 'new';
-    }
-
-    /**
-     * Get customer tier (uses stored column for speed, fallback to calculation)
-     */
-    public function getCustomerTier()
-    {
-        // Use stored column if available
-        if ($this->customer_tier) {
-            return $this->customer_tier;
-        }
-        
-        // Fallback to calculation
-        return $this->calculateTierFromSpending($this->total_spent ?? 0);
-    }
-
-    /**
-     * Get customer tier display label
-     */
-    public function getCustomerTierLabel()
-    {
-        return match($this->getCustomerTier()) {
-            'platinum' => 'Platinum Member',
-            'gold' => 'Gold Member',
-            'silver' => 'Silver Member',
-            'bronze' => 'Bronze Member',
-            'new' => 'New Customer'
-        };
-    }
-
-    /**
-     * Get customer tier color for UI badges
-     */
-    public function getCustomerTierColor()
-    {
-        return match($this->getCustomerTier()) {
-            'platinum' => '#E5E7EB', // Platinum color
-            'gold' => '#FCD34D',     // Gold color
-            'silver' => '#9CA3AF',   // Silver color
-            'bronze' => '#92400E',   // Bronze color
-            'new' => '#6B7280'       // Default gray
-        };
-    }
-
-    /**
-     * Get tier requirements for next level
-     */
-    public function getNextTierRequirement()
-    {
-        $currentSpent = $this->total_spent ?? 0;
-        
-        return match($this->getCustomerTier()) {
-            'new' => ['tier' => 'Bronze Member', 'required' => 1, 'remaining' => 1 - $currentSpent],
-            'bronze' => ['tier' => 'Silver Member', 'required' => 1000000, 'remaining' => 1000000 - $currentSpent],
-            'silver' => ['tier' => 'Gold Member', 'required' => 5000000, 'remaining' => 5000000 - $currentSpent],
-            'gold' => ['tier' => 'Platinum Member', 'required' => 10000000, 'remaining' => 10000000 - $currentSpent],
-            'platinum' => ['tier' => 'Platinum Member', 'required' => 10000000, 'remaining' => 0],
-        };
-    }
-
-    // =====================================
-    // PROFILE COMPLETION METHODS - ENHANCED
+    // PROFILE COMPLETION METHODS - UNCHANGED
     // =====================================
 
     /**
@@ -668,15 +871,15 @@ class User extends Authenticatable implements FilamentUser
     }
 
     // =====================================
-    // CUSTOMER CLASSIFICATION
+    // CUSTOMER CLASSIFICATION - UPDATED
     // =====================================
 
     /**
-     * Check if user is a high-value customer (fast query using stored column)
+     * Check if user is a high-value customer (UPDATED to use 6-month spending)
      */
     public function isHighValueCustomer()
     {
-        return ($this->total_spent ?? 0) >= 5000000; // 5 juta IDR
+        return ($this->spending_6_months ?? 0) >= 5000000; // 5 juta dalam 6 bulan
     }
 
     /**
@@ -703,7 +906,7 @@ class User extends Authenticatable implements FilamentUser
     }
 
     // =====================================
-    // USER ACTIVITY METHODS
+    // USER ACTIVITY METHODS - UNCHANGED
     // =====================================
 
     /**
@@ -737,7 +940,7 @@ class User extends Authenticatable implements FilamentUser
     }
 
     // =====================================
-    // DISPLAY HELPERS
+    // DISPLAY HELPERS - UPDATED
     // =====================================
 
     /**
@@ -749,6 +952,14 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
+     * Get formatted spending 6 months for display (NEW)
+     */
+    public function getFormattedSpending6Months()
+    {
+        return 'Rp ' . number_format($this->spending_6_months ?? 0, 0, ',', '.');
+    }
+
+    /**
      * Get formatted average order value for display
      */
     public function getFormattedAverageOrderValue()
@@ -757,26 +968,31 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
-     * Get customer statistics summary for dashboard
+     * Get customer statistics summary for dashboard (UPDATED)
      */
     public function getCustomerSummary()
     {
         return [
             'total_spent' => $this->total_spent ?? 0,
             'total_orders' => $this->total_orders ?? 0,
+            'spending_6_months' => $this->spending_6_months ?? 0,
             'average_order_value' => $this->getAverageOrderValue(),
             'spending_this_month' => $this->getSpendingThisMonth(),
             'spending_this_year' => $this->getSpendingThisYear(),
             'customer_tier' => $this->getCustomerTier(),
             'customer_tier_label' => $this->getCustomerTierLabel(),
             'customer_tier_color' => $this->getCustomerTierColor(),
+            'next_tier' => $this->getNextTierRequirement(),
+            'points_balance' => $this->points_balance ?? 0,
+            'points_percentage' => $this->getPointsPercentage(),
+            'total_points_earned' => $this->total_points_earned ?? 0,
             'last_order_date' => $this->getLastOrderDate(),
             'is_high_value' => $this->isHighValueCustomer(),
             'is_frequent_buyer' => $this->isFrequentBuyer(),
             'favorite_brands' => $this->getFavoriteBrands(3),
-            'next_tier' => $this->getNextTierRequirement(),
             'last_updated' => $this->spending_updated_at,
             'needs_update' => $this->needsSpendingUpdate(),
+            'needs_tier_evaluation' => $this->needsTierEvaluation(),
             'address_count' => $this->address_count,
             'has_primary_address' => $this->hasPrimaryAddress(),
             'profile_completion' => $this->getProfileCompletionPercentage(),
@@ -785,11 +1001,11 @@ class User extends Authenticatable implements FilamentUser
     }
 
     // =====================================
-    // ADMIN DASHBOARD HELPERS
+    // ADMIN DASHBOARD HELPERS - UPDATED
     // =====================================
 
     /**
-     * Get data formatted for admin dashboard
+     * Get data formatted for admin dashboard (UPDATED)
      */
     public function getAdminSummary()
     {
@@ -802,18 +1018,279 @@ class User extends Authenticatable implements FilamentUser
             'birthdate' => $this->birthdate?->format('Y-m-d'),
             'total_spent' => $this->total_spent ?? 0,
             'total_orders' => $this->total_orders ?? 0,
+            'spending_6_months' => $this->spending_6_months ?? 0,
             'average_order_value' => $this->getAverageOrderValue(),
             'customer_tier' => $this->getCustomerTier(),
             'customer_tier_label' => $this->getCustomerTierLabel(),
+            'points_balance' => $this->points_balance ?? 0,
+            'total_points_earned' => $this->total_points_earned ?? 0,
+            'total_points_redeemed' => $this->total_points_redeemed ?? 0,
             'is_high_value' => $this->isHighValueCustomer(),
             'is_frequent_buyer' => $this->isFrequentBuyer(),
             'last_order_date' => $this->getLastOrderDate()?->format('Y-m-d H:i:s'),
             'member_since' => $this->created_at->format('Y-m-d'),
             'spending_updated_at' => $this->spending_updated_at?->format('Y-m-d H:i:s'),
+            'last_tier_evaluation' => $this->last_tier_evaluation?->format('Y-m-d H:i:s'),
             'needs_update' => $this->needsSpendingUpdate(),
+            'needs_tier_evaluation' => $this->needsTierEvaluation(),
             'address_count' => $this->address_count,
             'profile_completion' => $this->getProfileCompletionPercentage(),
             'is_profile_complete' => $this->isProfileComplete(),
+        ];
+    }
+
+    // =====================================
+    // POINTS TRANSACTION HELPERS - NEW
+    // =====================================
+
+    /**
+     * Get recent points transactions
+     */
+    public function getRecentPointsTransactions($limit = 10)
+    {
+        return $this->pointsTransactions()
+                    ->orderBy('created_at', 'desc')
+                    ->limit($limit)
+                    ->get();
+    }
+
+    /**
+     * Get points earned this month
+     */
+    public function getPointsEarnedThisMonth()
+    {
+        return $this->pointsTransactions()
+                    ->where('type', 'earned')
+                    ->whereMonth('created_at', now()->month)
+                    ->whereYear('created_at', now()->year)
+                    ->sum('amount');
+    }
+
+    /**
+     * Get points redeemed this month
+     */
+    public function getPointsRedeemedThisMonth()
+    {
+        return $this->pointsTransactions()
+                    ->where('type', 'redeemed')
+                    ->whereMonth('created_at', now()->month)
+                    ->whereYear('created_at', now()->year)
+                    ->sum('amount');
+    }
+
+    /**
+     * Get points summary for dashboard
+     */
+    public function getPointsSummary()
+    {
+        return [
+            'current_balance' => $this->points_balance ?? 0,
+            'total_earned' => $this->total_points_earned ?? 0,
+            'total_redeemed' => $this->total_points_redeemed ?? 0,
+            'earned_this_month' => $this->getPointsEarnedThisMonth(),
+            'redeemed_this_month' => $this->getPointsRedeemedThisMonth(),
+            'points_percentage' => $this->getPointsPercentage(),
+            'tier' => $this->getCustomerTier(),
+            'recent_transactions' => $this->getRecentPointsTransactions(5)
+        ];
+    }
+
+    // =====================================
+    // TIER ANALYSIS HELPERS - NEW
+    // =====================================
+
+    /**
+     * Get days until next tier evaluation
+     */
+    public function getDaysUntilNextTierEvaluation()
+    {
+        if (!$this->last_tier_evaluation) {
+            return 0; // Needs evaluation now
+        }
+        
+        $nextEvaluation = $this->last_tier_evaluation->addDays(30);
+        $daysLeft = now()->diffInDays($nextEvaluation, false);
+        
+        return max(0, $daysLeft);
+    }
+
+    /**
+     * Get tier progress percentage
+     */
+    public function getTierProgressPercentage()
+    {
+        $nextTier = $this->getNextTierRequirement();
+        
+        if ($nextTier['remaining'] <= 0) {
+            return 100; // Already at highest tier
+        }
+        
+        $progress = ($nextTier['required'] - $nextTier['remaining']) / $nextTier['required'];
+        return round($progress * 100, 1);
+    }
+
+    /**
+     * Get spending needed for next tier
+     */
+    public function getSpendingNeededForNextTier()
+    {
+        $nextTier = $this->getNextTierRequirement();
+        return $nextTier['remaining'];
+    }
+
+    /**
+     * Check if user is eligible for tier upgrade
+     */
+    public function isEligibleForTierUpgrade()
+    {
+        return $this->getSpendingNeededForNextTier() <= 0 && $this->getCustomerTier() !== 'ultimate';
+    }
+
+    /**
+     * Get tier history summary
+     */
+    public function getTierHistorySummary()
+    {
+        return [
+            'current_tier' => $this->getCustomerTier(),
+            'current_tier_label' => $this->getCustomerTierLabel(),
+            'spending_6_months' => $this->spending_6_months ?? 0,
+            'tier_period_start' => $this->tier_period_start,
+            'last_evaluation' => $this->last_tier_evaluation,
+            'days_until_next_evaluation' => $this->getDaysUntilNextTierEvaluation(),
+            'progress_percentage' => $this->getTierProgressPercentage(),
+            'spending_needed' => $this->getSpendingNeededForNextTier(),
+            'eligible_for_upgrade' => $this->isEligibleForTierUpgrade(),
+            'next_tier_info' => $this->getNextTierRequirement()
+        ];
+    }
+
+    // =====================================
+    // LEGACY SUPPORT METHODS - FOR BACKWARD COMPATIBILITY
+    // =====================================
+
+    /**
+     * Legacy method for old tier labels - maps to new system
+     * @deprecated Use getCustomerTierLabel() instead
+     */
+    public function getOldCustomerTierLabel()
+{
+    return match ($this->getCustomerTier()) {
+        'ultimate' => 'Platinum Member',
+        'advance'  => 'Gold Member',
+        'basic'    => 'Bronze Member',
+        default    => 'New Customer',
+    };
+}
+
+
+    // =====================================
+    // DEBUGGING & MAINTENANCE HELPERS - NEW
+    // =====================================
+
+    /**
+     * Verify points balance integrity
+     */
+    public function verifyPointsBalance()
+    {
+        $calculatedBalance = $this->pointsTransactions()->earned()->sum('amount') 
+                           - $this->pointsTransactions()->redeemed()->sum('amount')
+                           + $this->pointsTransactions()->where('type', 'adjustment')->sum('amount');
+
+        return abs($calculatedBalance - ($this->points_balance ?? 0)) < 0.01;
+    }
+
+    /**
+     * Get comprehensive user health check
+     */
+    public function getHealthCheck()
+    {
+        return [
+            'user_id' => $this->id,
+            'profile_complete' => $this->isProfileComplete(),
+            'has_orders' => $this->orders()->exists(),
+            'spending_stats_current' => !$this->needsSpendingUpdate(),
+            'tier_evaluation_current' => !$this->needsTierEvaluation(),
+            'points_balance_valid' => $this->verifyPointsBalance(),
+            'has_addresses' => $this->hasAddresses(),
+            'email_verified' => !is_null($this->email_verified_at),
+            'is_active' => $this->isActiveUser(),
+            'last_activity' => $this->updated_at,
+            'issues' => $this->getAccountIssues()
+        ];
+    }
+
+    /**
+     * Get list of account issues that need attention
+     */
+    public function getAccountIssues()
+    {
+        $issues = [];
+        
+        if (!$this->isProfileComplete()) {
+            $issues[] = 'Profile incomplete';
+        }
+        
+        if ($this->needsSpendingUpdate()) {
+            $issues[] = 'Spending stats outdated';
+        }
+        
+        if ($this->needsTierEvaluation()) {
+            $issues[] = 'Tier evaluation needed';
+        }
+        
+        if (!$this->verifyPointsBalance()) {
+            $issues[] = 'Points balance inconsistent';
+        }
+        
+        if (!$this->email_verified_at) {
+            $issues[] = 'Email not verified';
+        }
+        
+        if (!$this->hasAddresses()) {
+            $issues[] = 'No shipping address';
+        }
+        
+        return $issues;
+    }
+
+    /**
+     * Get full user analytics data
+     */
+    public function getAnalyticsData()
+    {
+        return [
+            'basic_info' => [
+                'user_id' => $this->id,
+                'name' => $this->name,
+                'email' => $this->email,
+                'member_since' => $this->created_at->format('Y-m-d'),
+                'is_google_user' => $this->is_google_user,
+                'email_verified' => !is_null($this->email_verified_at)
+            ],
+            'spending_analytics' => [
+                'total_spent_lifetime' => $this->total_spent ?? 0,
+                'spending_6_months' => $this->spending_6_months ?? 0,
+                'total_orders' => $this->total_orders ?? 0,
+                'average_order_value' => $this->getAverageOrderValue(),
+                'spending_this_month' => $this->getSpendingThisMonth(),
+                'spending_this_year' => $this->getSpendingThisYear(),
+                'monthly_breakdown' => $this->getMonthlySpending(),
+                'last_order_date' => $this->getLastOrderDate()
+            ],
+            'tier_analytics' => $this->getTierHistorySummary(),
+            'points_analytics' => $this->getPointsSummary(),
+            'behavioral_analytics' => [
+                'is_high_value' => $this->isHighValueCustomer(),
+                'is_frequent_buyer' => $this->isFrequentBuyer(),
+                'is_active_user' => $this->isActiveUser(),
+                'favorite_brands' => $this->getFavoriteBrands(),
+                'wishlist_count' => $this->getWishlistCount(),
+                'cart_count' => $this->getCartCount(),
+                'address_count' => $this->address_count,
+                'profile_completion' => $this->getProfileCompletionPercentage()
+            ],
+            'health_check' => $this->getHealthCheck()
         ];
     }
 }

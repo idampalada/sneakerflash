@@ -1563,46 +1563,69 @@ class CheckoutController extends Controller
     }
 
     public function paymentSuccess(Request $request)
-    {
-        $orderNumber = $request->get('order_id');
+{
+    $orderNumber = $request->get('order_id');
+    
+    if ($orderNumber) {
+        $order = Order::where('order_number', $orderNumber)->first();
         
-        if ($orderNumber) {
-            $order = Order::where('order_number', $orderNumber)->first();
+        if ($order && $order->status === 'pending') {
+            // Update order status to paid
+            $order->update(['status' => 'paid']);
             
-            if ($order && $order->status === 'pending') {
-                $order->update(['status' => 'paid']);
-            }
-            
-            return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
-                           ->with('success', 'Payment completed! We are processing your order.');
+            // Log successful payment
+            Log::info('Payment successful via callback', [
+                'order_number' => $orderNumber,
+                'order_id' => $order->id,
+                'user_id' => $order->user_id,
+                'amount' => $order->total_amount
+            ]);
         }
         
-        return redirect()->route('home')->with('success', 'Payment completed successfully!');
+        return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
+                       ->with('success', 'Payment completed! We are processing your order.');
     }
+    
+    return redirect()->route('home')->with('success', 'Payment completed successfully!');
+}
 
     public function paymentPending(Request $request)
-    {
-        $orderNumber = $request->get('order_id');
-        
-        if ($orderNumber) {
-            return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
-                           ->with('warning', 'Payment is being processed. You will receive confirmation shortly.');
-        }
-        
-        return redirect()->route('home')->with('warning', 'Payment is being processed.');
+{
+    $orderNumber = $request->get('order_id');
+    
+    if ($orderNumber) {
+        return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
+                       ->with('warning', 'Payment is being processed. You will receive confirmation shortly.');
     }
+    
+    return redirect()->route('home')->with('warning', 'Payment is being processed.');
+}
 
     public function paymentError(Request $request)
-    {
-        $orderNumber = $request->get('order_id');
+{
+    $orderNumber = $request->get('order_id');
+    
+    if ($orderNumber) {
+        $order = Order::where('order_number', $orderNumber)->first();
         
-        if ($orderNumber) {
-            return redirect()->route('checkout.success', ['orderNumber' => $orderNumber])
-                           ->with('error', 'Payment failed. Please try again or contact support.');
+        if ($order && $order->status === 'pending') {
+            // Optionally update status to failed
+            // $order->update(['status' => 'failed']);
+            
+            Log::warning('Payment failed via callback', [
+                'order_number' => $orderNumber,
+                'order_id' => $order->id,
+                'user_id' => $order->user_id,
+                'amount' => $order->total_amount
+            ]);
         }
         
-        return redirect()->route('home')->with('error', 'Payment failed.');
+        return redirect()->route('checkout.index')
+                       ->with('error', 'Payment failed. Please try again.');
     }
+    
+    return redirect()->route('home')->with('error', 'Payment failed.');
+}
 
     public function paymentFinish(Request $request)
     {
@@ -1812,14 +1835,98 @@ class CheckoutController extends Controller
             default:
                 return 'pending';
         }
-    }
-
-    public function success($orderNumber)
-    {
-        $order = Order::with('orderItems.product')
-                     ->where('order_number', $orderNumber)
-                     ->firstOrFail();
         
-        return view('frontend.checkout.success', compact('order'));
     }
+    public function success($orderNumber)
+{
+    try {
+        // Find order by order number
+        $order = Order::where('order_number', $orderNumber)
+                      ->with(['orderItems.product', 'user'])
+                      ->first();
+        
+        if (!$order) {
+            return redirect()->route('home')
+                           ->with('error', 'Order not found.');
+        }
+        
+        // Check if user owns this order (if logged in)
+        if (Auth::check() && $order->user_id !== Auth::id()) {
+            return redirect()->route('home')
+                           ->with('error', 'Unauthorized access to order.');
+        }
+        
+        // Calculate points if order is paid and user exists
+        $pointsData = null;
+        if ($order->status === 'paid' && $order->user) {
+            $pointsData = $this->calculateOrderPoints($order);
+        }
+        
+        return view('frontend.checkout.success', compact('order', 'pointsData'));
+        
+    } catch (\Exception $e) {
+        Log::error('Error showing order success page', [
+            'order_number' => $orderNumber,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return redirect()->route('home')
+                       ->with('error', 'Unable to load order details.');
+    }
+}
+private function calculateOrderPoints(Order $order)
+{
+    try {
+        $user = $order->user;
+        if (!$user) {
+            return null;
+        }
+        
+        $pointsEarned = 0;
+        $pointsPercentage = 1; // Default 1%
+        $userTier = 'basic';
+        $tierLabel = 'Basic Member';
+        
+        // Get user tier and points percentage
+        if (method_exists($user, 'getCustomerTier')) {
+            $userTier = $user->getCustomerTier();
+        }
+        
+        if (method_exists($user, 'getCustomerTierLabel')) {
+            $tierLabel = $user->getCustomerTierLabel();
+        }
+        
+        if (method_exists($user, 'getPointsPercentage')) {
+            $pointsPercentage = $user->getPointsPercentage();
+        }
+        
+        // Calculate points earned
+        if (method_exists($user, 'calculatePointsFromPurchase')) {
+            $pointsEarned = $user->calculatePointsFromPurchase($order->total_amount);
+        } else {
+            // Fallback calculation
+            $pointsEarned = round(($order->total_amount * $pointsPercentage) / 100, 2);
+        }
+        
+        return [
+            'points_earned' => $pointsEarned,
+            'points_percentage' => $pointsPercentage,
+            'user_tier' => $userTier,
+            'tier_label' => $tierLabel,
+            'order_amount' => $order->total_amount,
+            'calculation_text' => "Rp " . number_format($order->total_amount, 0, ',', '.') . " × {$pointsPercentage}% = " . number_format($pointsEarned, 0, ',', '.') . " points"
+        ];
+        
+    } catch (\Exception $e) {
+        Log::error('Error calculating order points', [
+            'order_id' => $order->id,
+            'user_id' => $order->user_id,
+            'error' => $e->getMessage()
+        ]);
+        
+        return null;
+    }
+}
+
 }

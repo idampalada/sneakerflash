@@ -468,3 +468,26 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/api/zodiac/{zodiac}', [ProfileController::class, 'getZodiacData'])->name('api.zodiac.data');
     
 });
+
+Route::get('/checkout/success/{orderNumber}', [CheckoutController::class, 'success'])
+    ->name('checkout.success');
+
+// Payment Callback Routes (untuk Midtrans)
+Route::post('/payment/callback/success', [CheckoutController::class, 'paymentSuccess'])
+    ->name('payment.callback.success');
+
+Route::post('/payment/callback/pending', [CheckoutController::class, 'paymentPending'])
+    ->name('payment.callback.pending');
+
+Route::post('/payment/callback/error', [CheckoutController::class, 'paymentError'])
+    ->name('payment.callback.error');
+
+// Alternative routes untuk GET requests (jika diperlukan)
+Route::get('/payment/success', [CheckoutController::class, 'paymentSuccess'])
+    ->name('payment.success');
+
+Route::get('/payment/pending', [CheckoutController::class, 'paymentPending'])
+    ->name('payment.pending');
+
+Route::get('/payment/error', [CheckoutController::class, 'paymentError'])
+    ->name('payment.error');

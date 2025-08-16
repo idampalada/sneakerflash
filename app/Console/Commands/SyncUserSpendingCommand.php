@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\User;
 use Illuminate\Console\Command;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
 class SyncUserSpendingCommand extends Command
@@ -11,276 +11,116 @@ class SyncUserSpendingCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'users:sync-spending 
-                           {--user_id= : Sync specific user ID}
-                           {--chunk=100 : Number of users to process per chunk}
-                           {--force : Force sync even if recently updated}
-                           {--bulk : Use bulk PostgreSQL update (faster)}';
+    protected $signature = 'users:sync-spending {--dry-run : Run without making changes} {--user= : Sync specific user ID}';
 
     /**
      * The console command description.
      */
-    protected $description = 'Sync user spending statistics from orders table (PostgreSQL optimized)';
+    protected $description = 'Sync user spending statistics and tier evaluation from orders table';
+
+    /**
+     * Valid statuses that count as "paid/completed" orders for revenue calculation
+     */
+    private array $paidStatuses = ['paid', 'processing', 'shipped', 'delivered'];
 
     /**
      * Execute the console command.
      */
     public function handle()
     {
-        $startTime = microtime(true);
-        $userId = $this->option('user_id');
-        $chunkSize = (int) $this->option('chunk');
-        $force = $this->option('force');
-        $bulk = $this->option('bulk');
-
-        $this->info('🚀 Starting PostgreSQL user spending sync...');
-        $this->newLine();
-
+        $isDryRun = $this->option('dry-run');
+        $userId = $this->option('user');
+        
+        $this->info("🚀 Starting User Spending & Tier Sync Command");
+        $this->info("📊 New Tier System: Basic → Advance → Ultimate");
+        $this->info("💰 Paid Statuses: " . implode(', ', $this->paidStatuses));
+        
+        if ($isDryRun) {
+            $this->warn("🔍 DRY RUN MODE - No changes will be made");
+        }
+        
         if ($userId) {
-            // Sync specific user
-            $this->syncSpecificUser($userId);
-        } elseif ($bulk) {
-            // Bulk PostgreSQL update (super fast)
-            $this->bulkSyncPostgreSQL($force);
-        } else {
-            // Sync all users with Eloquent (slower but safer)
-            $this->syncAllUsers($chunkSize, $force);
+            $this->info("👤 Syncing specific user ID: {$userId}");
         }
-
-        $endTime = microtime(true);
-        $duration = round($endTime - $startTime, 2);
         
         $this->newLine();
-        $this->info("✅ Sync completed in {$duration} seconds");
-    }
-
-    /**
-     * Bulk sync using raw PostgreSQL (super fast for large datasets)
-     */
-    private function bulkSyncPostgreSQL($force)
-    {
-        $this->info('💾 Using bulk PostgreSQL update (fastest method)...');
         
-        $whereClause = '';
-        if (!$force) {
-            $whereClause = "WHERE u.spending_updated_at IS NULL 
-                           OR u.spending_updated_at < NOW() - INTERVAL '1 day'
-                           OR EXISTS (
-                               SELECT 1 FROM orders o 
-                               WHERE o.user_id = u.id 
-                               AND o.updated_at > u.spending_updated_at
-                           )";
-        }
-        
-        // PostgreSQL bulk update query - UPDATED to include tier calculation
-        $sql = "
-            UPDATE users u SET 
-                total_spent = COALESCE(order_stats.total_spent, 0),
-                total_orders = COALESCE(order_stats.total_orders, 0),
-                customer_tier = CASE 
-                    WHEN COALESCE(order_stats.total_spent, 0) >= 10000000 THEN 'platinum'
-                    WHEN COALESCE(order_stats.total_spent, 0) >= 5000000 THEN 'gold'
-                    WHEN COALESCE(order_stats.total_spent, 0) >= 1000000 THEN 'silver'
-                    WHEN COALESCE(order_stats.total_spent, 0) > 0 THEN 'basic'
-                    ELSE 'new'
-                END,
-                spending_updated_at = NOW()
-            FROM (
-                SELECT 
-                    user_id,
-                    SUM(total_amount) as total_spent,
-                    COUNT(*) as total_orders
-                FROM orders 
-                WHERE status IN ('paid', 'processing', 'shipped', 'delivered') 
-                AND user_id IS NOT NULL
-                GROUP BY user_id
-            ) order_stats
-            WHERE u.id = order_stats.user_id
-            {$whereClause}
-        ";
-        
-        $this->info('🔄 Executing bulk PostgreSQL update (including processing/shipped/delivered)...');
-        $affectedRows = DB::update($sql);
-        
-        $this->info("✅ Updated {$affectedRows} users using bulk PostgreSQL update");
-        
-        // Show results
-        $this->showTierDistribution();
-    }
-
-    /**
-     * Sync specific user
-     */
-    private function syncSpecificUser($userId)
-    {
-        $user = User::find($userId);
-        
-        if (!$user) {
-            $this->error("❌ User with ID {$userId} not found");
-            return;
-        }
-
-        $this->info("🔄 Syncing user: {$user->name} (ID: {$userId})");
-        
-        $oldSpent = $user->total_spent ?? 0;
-        $oldOrders = $user->total_orders ?? 0;
-        
-        // PostgreSQL specific query - UPDATED to include all paid statuses
-        $stats = DB::select("
-            SELECT 
-                COALESCE(SUM(total_amount), 0) as total_spent,
-                COALESCE(COUNT(*), 0) as total_orders
-            FROM orders 
-            WHERE user_id = ? AND status IN ('paid', 'processing', 'shipped', 'delivered')
-        ", [$userId]);
-        
-        $newSpent = $stats[0]->total_spent ?? 0;
-        $newOrders = $stats[0]->total_orders ?? 0;
-        
-        // Calculate tier
-        $newTier = $this->calculateTierFromSpending($newSpent);
-        
-        $user->update([
-            'total_spent' => $newSpent,
-            'total_orders' => $newOrders,
-            'customer_tier' => $newTier,
-            'spending_updated_at' => now()
-        ]);
-        
-        $this->table(
-            ['Field', 'Old Value', 'New Value', 'Change'],
-            [
-                [
-                    'Total Spent',
-                    'Rp ' . number_format($oldSpent, 0, ',', '.'),
-                    'Rp ' . number_format($newSpent, 0, ',', '.'),
-                    'Rp ' . number_format($newSpent - $oldSpent, 0, ',', '.')
-                ],
-                [
-                    'Total Orders',
-                    $oldOrders,
-                    $newOrders,
-                    '+' . ($newOrders - $oldOrders)
-                ],
-                [
-                    'Customer Tier',
-                    $this->getTierFromSpending($oldSpent),
-                    $this->getTierLabelFromTier($newTier),
-                    $oldSpent != $newSpent ? '📈 Changed' : '✅ Same'
-                ],
-                [
-                    'Stored in DB',
-                    'Calculated only',
-                    'customer_tier column',
-                    '💾 Now Stored'
-                ],
-                [
-                    'Counted Statuses',
-                    'paid only',
-                    'paid, processing, shipped, delivered',
-                    '🔄 Updated Logic'
-                ]
-            ]
-        );
-        
-        $this->info("✅ User {$userId} synced successfully");
-    }
-
-    /**
-     * Sync all users with Eloquent
-     */
-    private function syncAllUsers($chunkSize, $force)
-    {
+        // Build query
         $query = User::query();
-        
-        if (!$force) {
-            // PostgreSQL specific: Use interval for date comparison
-            $query->where(function($q) {
-                $q->whereNull('spending_updated_at')
-                  ->orWhereRaw("spending_updated_at < NOW() - INTERVAL '1 day'")
-                  ->orWhereExists(function($subQuery) {
-                      $subQuery->select(DB::raw(1))
-                               ->from('orders')
-                               ->whereColumn('orders.user_id', 'users.id')
-                               ->whereRaw('orders.updated_at > users.spending_updated_at');
-                  });
-            });
+        if ($userId) {
+            $query->where('id', $userId);
         }
         
-        $totalUsers = $query->count();
+        $users = $query->get();
+        $total = $users->count();
         
-        if ($totalUsers === 0) {
-            $this->info('✅ All users are already up to date!');
+        if ($total === 0) {
+            $this->error("❌ No users found to sync");
             return;
         }
         
-        $this->info("📊 Found {$totalUsers} users to sync");
-        $this->newLine();
-        
-        $progressBar = $this->output->createProgressBar($totalUsers);
-        $progressBar->setFormat('Processing: %current%/%max% [%bar%] %percent:3s%% - %message%');
-        $progressBar->setMessage('Starting...');
+        $this->info("📈 Found {$total} users to sync");
+        $progressBar = $this->output->createProgressBar($total);
+        $progressBar->start();
         
         $processed = 0;
         $updated = 0;
         $errors = 0;
-        
         $tierChanges = [
-            'platinum' => 0,
-            'gold' => 0,
-            'silver' => 0,
             'basic' => 0,
-            'new' => 0
+            'advance' => 0,
+            'ultimate' => 0
         ];
-
-        $query->chunk($chunkSize, function ($users) use ($progressBar, &$processed, &$updated, &$errors, &$tierChanges) {
-            foreach ($users as $user) {
-                try {
-                    $oldTier = $this->getTierFromSpending($user->total_spent ?? 0);
-                    $oldSpent = $user->total_spent ?? 0;
-                    
-                    // PostgreSQL specific: Use single query - UPDATED to include all paid statuses
-                    $stats = DB::select("
-                        SELECT 
-                            COALESCE(SUM(total_amount), 0) as total_spent,
-                            COALESCE(COUNT(*), 0) as total_orders
-                        FROM orders 
-                        WHERE user_id = ? AND status IN ('paid', 'processing', 'shipped', 'delivered')
-                    ", [$user->id]);
-                    
-                    $newSpent = $stats[0]->total_spent ?? 0;
-                    $newOrders = $stats[0]->total_orders ?? 0;
-                    
-                    // Calculate tier
-                    $newTier = $this->calculateTierFromSpending($newSpent);
-                    
+        
+        $users->each(function ($user) use (&$processed, &$updated, &$errors, &$tierChanges, $isDryRun, $progressBar) {
+            try {
+                $processed++;
+                
+                // Get current values
+                $oldSpent = $user->total_spent ?? 0;
+                $oldOrders = $user->total_orders ?? 0;
+                $oldSpending6Months = $user->spending_6_months ?? 0;
+                $oldTier = $user->getCustomerTier();
+                
+                // Calculate new values
+                $newTotalSpent = $user->orders()->whereIn('status', $this->paidStatuses)->sum('total_amount');
+                $newTotalOrders = $user->orders()->whereIn('status', $this->paidStatuses)->count();
+                $newSpending6Months = $user->getSpending6Months(); // Calculate 6-month spending
+                $newTier = $this->calculateTierFromSpending($newSpending6Months);
+                
+                // Check if update is needed
+                $needsUpdate = ($oldSpent != $newTotalSpent) || 
+                              ($oldOrders != $newTotalOrders) || 
+                              ($oldSpending6Months != $newSpending6Months) ||
+                              ($oldTier !== $newTier);
+                
+                if ($needsUpdate && !$isDryRun) {
                     $user->update([
-                        'total_spent' => $newSpent,
-                        'total_orders' => $newOrders,
+                        'total_spent' => $newTotalSpent,
+                        'total_orders' => $newTotalOrders,
+                        'spending_6_months' => $newSpending6Months,
                         'customer_tier' => $newTier,
-                        'spending_updated_at' => now()
+                        'spending_updated_at' => now(),
+                        'last_tier_evaluation' => now()
                     ]);
                     
-                    $newTierName = $this->getTierFromSpending($newSpent);
-                    
-                    // Track tier changes
-                    if ($oldTier !== $newTierName) {
-                        $tierChanges[$newTierName]++;
+                    // Initialize tier_period_start if not set
+                    if (!$user->tier_period_start) {
+                        $user->update(['tier_period_start' => now()->subMonths(6)]);
                     }
                     
-                    // Count as updated if spending changed
-                    if ($oldSpent != $newSpent) {
-                        $updated++;
-                    }
-                    
-                    $processed++;
-                    $progressBar->setMessage("User: {$user->name}");
-                    $progressBar->advance();
-                    
-                } catch (\Exception $e) {
-                    $errors++;
-                    $this->error("❌ Error syncing user {$user->id}: " . $e->getMessage());
+                    $updated++;
+                    $tierChanges[$newTier]++;
+                } elseif ($needsUpdate && $isDryRun) {
+                    $updated++; // Count what would be updated
+                    $tierChanges[$newTier]++;
                 }
+                
+                $progressBar->advance();
+                
+            } catch (\Exception $e) {
+                $errors++;
+                $this->error("❌ Error syncing user {$user->id}: " . $e->getMessage());
             }
         });
         
@@ -293,7 +133,7 @@ class SyncUserSpendingCommand extends Command
             ['Metric', 'Count'],
             [
                 ['Total Processed', $processed],
-                ['Actually Updated', $updated],
+                [$isDryRun ? 'Would Update' : 'Actually Updated', $updated],
                 ['Errors', $errors],
                 ['Success Rate', round(($processed - $errors) / $processed * 100, 1) . '%']
             ]
@@ -303,15 +143,13 @@ class SyncUserSpendingCommand extends Command
         $totalTierChanges = array_sum($tierChanges);
         if ($totalTierChanges > 0) {
             $this->newLine();
-            $this->info("🏆 Tier Changes:");
+            $this->info($isDryRun ? "🏆 Would Set Tiers:" : "🏆 Tier Distribution:");
             foreach ($tierChanges as $tier => $count) {
                 if ($count > 0) {
                     $emoji = match($tier) {
-                        'platinum' => '💎',
-                        'gold' => '🥇',
-                        'silver' => '🥈',
-                        'basic' => '🥉',
-                        'new' => '🆕'
+                        'ultimate' => '💎',
+                        'advance' => '🥇',
+                        'basic' => '🥉'
                     };
                     $this->line("  {$emoji} " . ucfirst($tier) . ": {$count} users");
                 }
@@ -319,27 +157,24 @@ class SyncUserSpendingCommand extends Command
         }
         
         // Show current tier distribution
-        $this->showTierDistribution();
+        if (!$isDryRun) {
+            $this->showTierDistribution();
+        }
+        
+        if ($isDryRun) {
+            $this->newLine();
+            $this->info("💡 Run without --dry-run to apply changes");
+        }
     }
 
     /**
-     * Calculate tier from spending amount
+     * Calculate tier from 6-month spending amount
      */
-    private function calculateTierFromSpending($spending)
+    private function calculateTierFromSpending($spending6Months)
     {
-        if ($spending >= 10000000) return 'platinum';
-        if ($spending >= 5000000) return 'gold';
-        if ($spending >= 1000000) return 'silver';
-        if ($spending > 0) return 'basic';
-        return 'new';
-    }
-
-    /**
-     * Get tier from spending amount (for display)
-     */
-    private function getTierFromSpending($spending)
-    {
-        return $this->calculateTierFromSpending($spending);
+        if ($spending6Months >= 10000000) return 'ultimate';    // 10 juta IDR dalam 6 bulan
+        if ($spending6Months >= 5000000) return 'advance';     // 5 juta IDR dalam 6 bulan
+        return 'basic';
     }
 
     /**
@@ -348,11 +183,10 @@ class SyncUserSpendingCommand extends Command
     private function getTierLabelFromTier($tier)
     {
         return match($tier) {
-            'platinum' => 'Platinum Member',
-            'gold' => 'Gold Member',
-            'silver' => 'Silver Member',
-            'basic' => 'basic Member',
-            'new' => 'New Customer'
+            'ultimate' => 'Ultimate Member',
+            'advance' => 'Advance Member',
+            'basic' => 'Basic Member',
+            default => 'Basic Member'
         };
     }
 
@@ -364,57 +198,22 @@ class SyncUserSpendingCommand extends Command
         $this->newLine();
         $this->info("📊 Current Tier Distribution (PostgreSQL):");
         
-        // PostgreSQL specific query with CASE WHEN
+        // PostgreSQL specific query for new tier system
         $distribution = DB::select("
             SELECT 
-                CASE 
-                    WHEN total_spent >= 10000000 THEN 'platinum'
-                    WHEN total_spent >= 5000000 THEN 'gold'
-                    WHEN total_spent >= 1000000 THEN 'silver'
-                    WHEN total_spent > 0 THEN 'bronze'
-                    ELSE 'new'
-                END as tier,
-                COUNT(*) as count
+                customer_tier as tier,
+                COUNT(*) as count,
+                ROUND(AVG(spending_6_months), 2) as avg_spending_6_months,
+                MAX(spending_6_months) as max_spending_6_months
             FROM users 
-            GROUP BY 
-                CASE 
-                    WHEN total_spent >= 10000000 THEN 'platinum'
-                    WHEN total_spent >= 5000000 THEN 'gold'
-                    WHEN total_spent >= 1000000 THEN 'silver'
-                    WHEN total_spent > 0 THEN 'bronze'
-                    ELSE 'new'
-                END
+            WHERE customer_tier IS NOT NULL
+            GROUP BY customer_tier
             ORDER BY 
                 CASE 
-                    WHEN CASE 
-                        WHEN total_spent >= 10000000 THEN 'platinum'
-                        WHEN total_spent >= 5000000 THEN 'gold'
-                        WHEN total_spent >= 1000000 THEN 'silver'
-                        WHEN total_spent > 0 THEN 'bronze'
-                        ELSE 'new'
-                    END = 'platinum' THEN 5
-                    WHEN CASE 
-                        WHEN total_spent >= 10000000 THEN 'platinum'
-                        WHEN total_spent >= 5000000 THEN 'gold'
-                        WHEN total_spent >= 1000000 THEN 'silver'
-                        WHEN total_spent > 0 THEN 'bronze'
-                        ELSE 'new'
-                    END = 'gold' THEN 4
-                    WHEN CASE 
-                        WHEN total_spent >= 10000000 THEN 'platinum'
-                        WHEN total_spent >= 5000000 THEN 'gold'
-                        WHEN total_spent >= 1000000 THEN 'silver'
-                        WHEN total_spent > 0 THEN 'bronze'
-                        ELSE 'new'
-                    END = 'silver' THEN 3
-                    WHEN CASE 
-                        WHEN total_spent >= 10000000 THEN 'platinum'
-                        WHEN total_spent >= 5000000 THEN 'gold'
-                        WHEN total_spent >= 1000000 THEN 'silver'
-                        WHEN total_spent > 0 THEN 'bronze'
-                        ELSE 'new'
-                    END = 'bronze' THEN 2
-                    ELSE 1
+                    WHEN customer_tier = 'ultimate' THEN 3
+                    WHEN customer_tier = 'advance' THEN 2
+                    WHEN customer_tier = 'basic' THEN 1
+                    ELSE 0
                 END DESC
         ");
         
@@ -423,29 +222,32 @@ class SyncUserSpendingCommand extends Command
         foreach ($distribution as $tier) {
             $percentage = $total > 0 ? round($tier->count / $total * 100, 1) : 0;
             $emoji = match($tier->tier) {
-                'platinum' => '💎',
-                'gold' => '🥇',
-                'silver' => '🥈',
-                'bronze' => '🥉',
-                'new' => '🆕'
+                'ultimate' => '💎',
+                'advance' => '🥇',
+                'basic' => '🥉',
+                default => '❓'
             };
             
             $this->line("  {$emoji} " . str_pad(ucfirst($tier->tier), 8) . ": {$tier->count} users ({$percentage}%)");
+            $this->line("     └─ Avg 6-month: Rp " . number_format($tier->avg_spending_6_months ?? 0, 0, ',', '.'));
+            $this->line("     └─ Max 6-month: Rp " . number_format($tier->max_spending_6_months ?? 0, 0, ',', '.'));
         }
         
         $this->newLine();
-        $this->info("💰 PostgreSQL Spending Statistics:");
+        $this->info("💰 PostgreSQL Spending Statistics (6-Month Focus):");
         
-        // PostgreSQL aggregation functions
+        // PostgreSQL aggregation functions for new system
         $stats = DB::select("
             SELECT 
                 COUNT(*) as total_customers,
-                ROUND(AVG(total_spent), 2) as avg_spending,
-                SUM(total_spent) as total_revenue,
-                MAX(total_spent) as highest_spender,
-                MIN(CASE WHEN total_spent > 0 THEN total_spent END) as lowest_spender,
-                COUNT(CASE WHEN total_spent >= 5000000 THEN 1 END) as high_value_customers,
-                COUNT(CASE WHEN total_orders >= 5 THEN 1 END) as frequent_buyers
+                ROUND(AVG(spending_6_months), 2) as avg_spending_6_months,
+                SUM(spending_6_months) as total_spending_6_months,
+                MAX(spending_6_months) as highest_6_month_spender,
+                MIN(CASE WHEN spending_6_months > 0 THEN spending_6_months END) as lowest_6_month_spender,
+                COUNT(CASE WHEN spending_6_months >= 5000000 THEN 1 END) as advance_eligible,
+                COUNT(CASE WHEN spending_6_months >= 10000000 THEN 1 END) as ultimate_eligible,
+                COUNT(CASE WHEN points_balance > 0 THEN 1 END) as users_with_points,
+                ROUND(AVG(points_balance), 2) as avg_points_balance
             FROM users
         ")[0];
             
@@ -453,13 +255,21 @@ class SyncUserSpendingCommand extends Command
             ['Metric', 'Value'],
             [
                 ['Total Customers', number_format($stats->total_customers)],
-                ['High Value Customers', number_format($stats->high_value_customers)],
-                ['Frequent Buyers', number_format($stats->frequent_buyers)],
-                ['Average Spending', 'Rp ' . number_format($stats->avg_spending ?? 0, 0, ',', '.')],
-                ['Total Revenue', 'Rp ' . number_format($stats->total_revenue ?? 0, 0, ',', '.')],
-                ['Highest Spender', 'Rp ' . number_format($stats->highest_spender ?? 0, 0, ',', '.')],
-                ['Lowest Spender', 'Rp ' . number_format($stats->lowest_spender ?? 0, 0, ',', '.')]
+                ['Advance Eligible (5M+)', number_format($stats->advance_eligible)],
+                ['Ultimate Eligible (10M+)', number_format($stats->ultimate_eligible)],
+                ['Users with Points', number_format($stats->users_with_points)],
+                ['Avg 6-Month Spending', 'Rp ' . number_format($stats->avg_spending_6_months ?? 0, 0, ',', '.')],
+                ['Total 6-Month Spending', 'Rp ' . number_format($stats->total_spending_6_months ?? 0, 0, ',', '.')],
+                ['Highest 6-Month Spender', 'Rp ' . number_format($stats->highest_6_month_spender ?? 0, 0, ',', '.')],
+                ['Lowest 6-Month Spender', 'Rp ' . number_format($stats->lowest_6_month_spender ?? 0, 0, ',', '.')],
+                ['Avg Points Balance', number_format($stats->avg_points_balance ?? 0, 0, ',', '.')]
             ]
         );
+        
+        $this->newLine();
+        $this->info("🎯 Tier Thresholds (6-Month Spending):");
+        $this->line("  🥉 Basic: Rp 0 - Rp 4,999,999 (1% points)");
+        $this->line("  🥇 Advance: Rp 5,000,000 - Rp 9,999,999 (2.5% points)");
+        $this->line("  💎 Ultimate: Rp 10,000,000+ (5% points)");
     }
 }
