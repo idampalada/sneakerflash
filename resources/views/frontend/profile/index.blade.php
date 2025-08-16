@@ -148,6 +148,25 @@
                                 </p>
                             </div>
 
+                            {{-- NEW: Zodiac Display --}}
+                            @if($user->zodiac && isset($zodiacInfo))
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    Zodiac Sign
+                                    <span class="text-xs text-purple-600 ml-2">✨ Auto-calculated</span>
+                                </label>
+                                <div class="py-2 px-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded border border-purple-200">
+                                    <div class="flex items-center space-x-3">
+                                        <span class="text-2xl">{{ $zodiacInfo['symbol'] }}</span>
+                                        <div>
+                                            <div class="font-semibold text-purple-800">{{ $zodiacInfo['name'] }}</div>
+                                            <div class="text-sm text-purple-600">{{ $zodiacInfo['dates'] }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            @endif
+
                             <!-- Profile Completion Info -->
                             @if(!($isProfileLocked ?? false))
                             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
@@ -329,6 +348,17 @@
                                 @if($lockedFields['birthdate'] ?? false)
                                     <p class="text-xs text-blue-600 mt-1">This field is protected and cannot be modified</p>
                                 @endif
+
+                                {{-- NEW: Real-time Zodiac Preview --}}
+                                <div id="zodiac-preview" class="mt-3 p-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hidden">
+                                    <div class="flex items-center space-x-3">
+                                        <span id="zodiac-symbol" class="text-2xl"></span>
+                                        <div>
+                                            <div id="zodiac-name" class="font-semibold"></div>
+                                            <div id="zodiac-dates" class="text-sm opacity-90"></div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Action Buttons -->
@@ -365,6 +395,45 @@
 
             <!-- Right Sidebar -->
             <div class="space-y-6">
+                {{-- NEW: Zodiac Info Card --}}
+                @if($user->zodiac && isset($zodiacInfo))
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4">Your Zodiac</h2>
+                    
+                    <div class="text-center mb-4">
+                        <div class="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <span class="text-2xl text-white">{{ $zodiacInfo['symbol'] }}</span>
+                        </div>
+                        <h4 class="text-xl font-bold text-gray-900">{{ $zodiacInfo['name'] }}</h4>
+                        <p class="text-sm text-gray-600">{{ $zodiacInfo['dates'] }}</p>
+                    </div>
+                    
+                    <div class="space-y-3 mb-4">
+                        <div class="flex justify-between">
+                            <span class="text-sm font-medium text-gray-700">Element:</span>
+                            <span class="text-gray-900">{{ $zodiacInfo['element'] }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm font-medium text-gray-700">Ruling Planet:</span>
+                            <span class="text-gray-900">{{ $zodiacInfo['ruling_planet'] }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="text-sm text-gray-700">{{ $zodiacInfo['description'] }}</p>
+                    </div>
+                    
+                    <div>
+                        <span class="text-sm font-medium text-gray-700">Key Traits:</span>
+                        <div class="flex flex-wrap gap-1 mt-2">
+                            @foreach($zodiacInfo['traits'] as $trait)
+                                <span class="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">{{ $trait }}</span>
+                            @endforeach
+                        </div>
+                    </div>
+                </div>
+                @endif
+
                 <!-- Address Management -->
                 <div class="bg-white rounded-lg shadow-md p-6">
                     <h2 class="text-xl font-semibold mb-4">Address Management</h2>
@@ -470,6 +539,11 @@
                                 @endif
                                 
                                 <br><span class="text-green-600">📍 {{ $addressCount }} Address{{ $addressCount != 1 ? 'es' : '' }}</span>
+                                
+                                {{-- NEW: Zodiac Status --}}
+                                @if($user->zodiac)
+                                    <br><span class="text-purple-600">✨ Zodiac: {{ $user->zodiac }}</span>
+                                @endif
                             </div>
                         </div>
                     </div>
@@ -480,6 +554,52 @@
 </div>
 
 <script>
+// Zodiac calculation function
+function calculateZodiac(birthdate) {
+    if (!birthdate) return null;
+    
+    const date = new Date(birthdate);
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const monthDay = month * 100 + day;
+    
+    const zodiacData = {
+        'PISCES': { symbol: '♓', dates: '19 FEB - 20 MAR' },
+        'ARIES': { symbol: '♈', dates: '21 MAR - 19 APR' },
+        'TAURUS': { symbol: '♉', dates: '20 APR - 20 MEI' },
+        'GEMINI': { symbol: '♊', dates: '21 MEI - 20 JUNI' },
+        'CANCER': { symbol: '♋', dates: '21 JUN - 22 JUL' },
+        'LEO': { symbol: '♌', dates: '23 JULI - 22 AGUS' },
+        'VIRGO': { symbol: '♍', dates: '23 AGUS - 22 SEP' },
+        'LIBRA': { symbol: '♎', dates: '23 SEP - 22 OKT' },
+        'SCORPIO': { symbol: '♏', dates: '23 OKT - 21 NOV' },
+        'SAGITARIUS': { symbol: '♐', dates: '22 NOV - 21 DES' },
+        'CAPRICORN': { symbol: '♑', dates: '22 DES - 19 JAN' },
+        'AQUARIUS': { symbol: '♒', dates: '20 JAN - 18 FEB' }
+    };
+    
+    let zodiacName = null;
+    
+    if ((monthDay >= 1222) || (monthDay <= 119)) zodiacName = 'CAPRICORN';
+    else if (monthDay >= 120 && monthDay <= 218) zodiacName = 'AQUARIUS';
+    else if (monthDay >= 219 && monthDay <= 320) zodiacName = 'PISCES';
+    else if (monthDay >= 321 && monthDay <= 419) zodiacName = 'ARIES';
+    else if (monthDay >= 420 && monthDay <= 520) zodiacName = 'TAURUS';
+    else if (monthDay >= 521 && monthDay <= 620) zodiacName = 'GEMINI';
+    else if (monthDay >= 621 && monthDay <= 722) zodiacName = 'CANCER';
+    else if (monthDay >= 723 && monthDay <= 822) zodiacName = 'LEO';
+    else if (monthDay >= 823 && monthDay <= 922) zodiacName = 'VIRGO';
+    else if (monthDay >= 923 && monthDay <= 1022) zodiacName = 'LIBRA';
+    else if (monthDay >= 1023 && monthDay <= 1121) zodiacName = 'SCORPIO';
+    else if (monthDay >= 1122 && monthDay <= 1221) zodiacName = 'SAGITARIUS';
+    
+    return zodiacName ? {
+        name: zodiacName,
+        symbol: zodiacData[zodiacName].symbol,
+        dates: zodiacData[zodiacName].dates
+    } : null;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Set width for progress bar using data attribute
     const progressBar = document.querySelector('[data-width]');
@@ -510,7 +630,42 @@ document.addEventListener('DOMContentLoaded', function() {
             if (form) {
                 form.reset();
             }
+            
+            // Hide zodiac preview when canceling
+            const zodiacPreview = document.getElementById('zodiac-preview');
+            if (zodiacPreview) {
+                zodiacPreview.classList.add('hidden');
+            }
         });
+    }
+
+    // NEW: Birth date change handler for zodiac preview
+    const birthdateInput = document.getElementById('birthdate');
+    if (birthdateInput) {
+        birthdateInput.addEventListener('change', function() {
+            const birthdate = this.value;
+            const preview = document.getElementById('zodiac-preview');
+            
+            if (birthdate) {
+                const zodiac = calculateZodiac(birthdate);
+                
+                if (zodiac) {
+                    document.getElementById('zodiac-symbol').textContent = zodiac.symbol;
+                    document.getElementById('zodiac-name').textContent = zodiac.name;
+                    document.getElementById('zodiac-dates').textContent = zodiac.dates;
+                    preview.classList.remove('hidden');
+                } else {
+                    preview.classList.add('hidden');
+                }
+            } else {
+                preview.classList.add('hidden');
+            }
+        });
+
+        // Show zodiac preview on page load if birthdate exists
+        if (birthdateInput.value) {
+            birthdateInput.dispatchEvent(new Event('change'));
+        }
     }
 });
 </script>

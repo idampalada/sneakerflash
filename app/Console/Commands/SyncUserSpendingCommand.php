@@ -81,7 +81,7 @@ class SyncUserSpendingCommand extends Command
                     WHEN COALESCE(order_stats.total_spent, 0) >= 10000000 THEN 'platinum'
                     WHEN COALESCE(order_stats.total_spent, 0) >= 5000000 THEN 'gold'
                     WHEN COALESCE(order_stats.total_spent, 0) >= 1000000 THEN 'silver'
-                    WHEN COALESCE(order_stats.total_spent, 0) > 0 THEN 'bronze'
+                    WHEN COALESCE(order_stats.total_spent, 0) > 0 THEN 'basic'
                     ELSE 'new'
                 END,
                 spending_updated_at = NOW()
@@ -229,7 +229,7 @@ class SyncUserSpendingCommand extends Command
             'platinum' => 0,
             'gold' => 0,
             'silver' => 0,
-            'bronze' => 0,
+            'basic' => 0,
             'new' => 0
         ];
 
@@ -310,7 +310,7 @@ class SyncUserSpendingCommand extends Command
                         'platinum' => '💎',
                         'gold' => '🥇',
                         'silver' => '🥈',
-                        'bronze' => '🥉',
+                        'basic' => '🥉',
                         'new' => '🆕'
                     };
                     $this->line("  {$emoji} " . ucfirst($tier) . ": {$count} users");
@@ -330,7 +330,7 @@ class SyncUserSpendingCommand extends Command
         if ($spending >= 10000000) return 'platinum';
         if ($spending >= 5000000) return 'gold';
         if ($spending >= 1000000) return 'silver';
-        if ($spending > 0) return 'bronze';
+        if ($spending > 0) return 'basic';
         return 'new';
     }
 
@@ -351,7 +351,7 @@ class SyncUserSpendingCommand extends Command
             'platinum' => 'Platinum Member',
             'gold' => 'Gold Member',
             'silver' => 'Silver Member',
-            'bronze' => 'Bronze Member',
+            'basic' => 'basic Member',
             'new' => 'New Customer'
         };
     }

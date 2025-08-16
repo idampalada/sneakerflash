@@ -452,3 +452,19 @@ Route::prefix('vouchers')->name('vouchers.')->group(function() {
     // Manual payment status check (for debugging)
     Route::get('/payment/check/{orderNumber}', [CheckoutController::class, 'checkPaymentStatus'])->name('payment.check');
     });
+
+    // Existing profile routes (keep your current ones)
+Route::middleware(['auth'])->group(function () {
+    
+    // Profile routes
+    Route::get('/profile', [ProfileController::class, 'index'])->name('profile.index');
+    Route::put('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::post('/profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password.update');
+    
+    // API routes for profile data (existing)
+    Route::get('/api/profile/data', [ProfileController::class, 'getProfileData'])->name('api.profile.data');
+    
+    // New API route for zodiac data
+    Route::get('/api/zodiac/{zodiac}', [ProfileController::class, 'getZodiacData'])->name('api.zodiac.data');
+    
+});
