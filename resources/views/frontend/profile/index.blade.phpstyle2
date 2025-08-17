@@ -5,22 +5,22 @@
 @section('content')
 <div class="container mx-auto px-4 py-8">
     <div class="max-w-6xl mx-auto">
-        <h1 class="text-3xl font-bold text-black mb-8">My Profile</h1>
+        <h1 class="text-3xl font-bold text-gray-900 mb-8">My Profile</h1>
 
         @if(session('success'))
-            <div class="bg-yellow-100 border border-yellow-400 text-black px-4 py-3 rounded mb-6">
+            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">
                 {{ session('success') }}
             </div>
         @endif
 
         @if(session('error'))
-            <div class="bg-black border border-gray-600 text-white px-4 py-3 rounded mb-6">
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
                 {{ session('error') }}
             </div>
         @endif
 
         @if ($errors->any())
-            <div class="bg-black border border-gray-600 text-white px-4 py-3 rounded mb-6">
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
                 <ul>
                     @foreach ($errors->all() as $error)
                         <li>{{ $error }}</li>
@@ -37,14 +37,14 @@
                 @php
                     $tierColor = 'gray';
                     $currentTier = $user->getCustomerTier() ?? 'basic';
-                    if ($currentTier === 'ultimate') $tierColor = 'yellow';
-                    elseif ($currentTier === 'advance') $tierColor = 'yellow';
+                    if ($currentTier === 'ultimate') $tierColor = 'purple';
+                    elseif ($currentTier === 'advance') $tierColor = 'blue';
                 @endphp
                 
-                <div class="bg-gradient-to-r from-black to-gray-800 rounded-lg shadow-lg text-white p-6">
+                <div class="bg-gradient-to-r from-{{ $tierColor }}-500 to-{{ $tierColor }}-600 rounded-lg shadow-lg text-white p-6">
                     <div class="flex items-center justify-between mb-4">
                         <div>
-                            <h3 class="text-2xl font-bold text-yellow-400">{{ $user->getCustomerTierLabel() ?? 'Basic Member' }}</h3>
+                            <h3 class="text-2xl font-bold">{{ $user->getCustomerTierLabel() ?? 'Basic Member' }}</h3>
                             <p class="text-white opacity-80">Your current membership tier</p>
                         </div>
                         <div class="text-4xl">
@@ -61,13 +61,13 @@
                     <div class="grid grid-cols-2 gap-4 mb-4">
                         <div>
                             <div class="text-white opacity-80 text-sm">6-Month Spending</div>
-                            <div class="text-xl font-bold text-yellow-400">
+                            <div class="text-xl font-bold">
                                 {{ method_exists($user, 'getFormattedSpending6Months') ? $user->getFormattedSpending6Months() : 'Rp 0' }}
                             </div>
                         </div>
                         <div>
                             <div class="text-white opacity-80 text-sm">Points Rate</div>
-                            <div class="text-xl font-bold text-yellow-400">
+                            <div class="text-xl font-bold">
                                 {{ method_exists($user, 'getPointsPercentage') ? $user->getPointsPercentage() : '1' }}%
                             </div>
                         </div>
@@ -77,88 +77,88 @@
                     @if(method_exists($user, 'getNextTierRequirement'))
                         @php $nextTier = $user->getNextTierRequirement(); @endphp
                         @if($nextTier['remaining'] > 0)
-                            <div class="bg-white bg-opacity-10 rounded-lg p-4">
+                            <div class="bg-white bg-opacity-20 rounded-lg p-4">
                                 <div class="flex justify-between items-center mb-2">
                                     <span class="text-sm text-white opacity-80">Progress to {{ $nextTier['tier'] }}</span>
-                                    <span class="text-sm font-medium text-yellow-400">
+                                    <span class="text-sm font-medium">
                                         {{ round((($nextTier['required'] - $nextTier['remaining']) / $nextTier['required']) * 100, 1) }}%
                                     </span>
                                 </div>
                                 <div class="w-full bg-white bg-opacity-20 rounded-full h-2 mb-2">
-                                    <div class="bg-yellow-400 h-2 rounded-full" style="width: {{ round((($nextTier['required'] - $nextTier['remaining']) / $nextTier['required']) * 100, 1) }}%"></div>
+                                    <div class="bg-white h-2 rounded-full" style="width: {{ round((($nextTier['required'] - $nextTier['remaining']) / $nextTier['required']) * 100, 1) }}%"></div>
                                 </div>
                                 <div class="text-xs text-white opacity-80">
                                     Spend Rp {{ number_format($nextTier['remaining'], 0, ',', '.') }} more in {{ $nextTier['period'] }} to reach {{ $nextTier['tier'] }}
                                 </div>
                             </div>
                         @else
-                            <div class="bg-yellow-400 bg-opacity-20 rounded-lg p-4 text-center">
-                                <div class="text-sm text-yellow-400">🎉 You've reached the highest tier!</div>
+                            <div class="bg-white bg-opacity-20 rounded-lg p-4 text-center">
+                                <div class="text-sm text-white opacity-80">🎉 You've reached the highest tier!</div>
                             </div>
                         @endif
                     @else
-                        <div class="bg-white bg-opacity-10 rounded-lg p-4">
+                        <div class="bg-white bg-opacity-20 rounded-lg p-4">
                             <div class="text-sm text-white opacity-80">Tier system is being set up...</div>
                         </div>
                     @endif
                 </div>
 
                 <!-- Points Balance Card -->
-                <div class="bg-white rounded-lg shadow-md p-6 border-2 border-yellow-400">
+                <div class="bg-white rounded-lg shadow-md p-6">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-xl font-semibold text-black">Points Balance</h3>
+                        <h3 class="text-xl font-semibold text-gray-900">Points Balance</h3>
                         <div class="text-2xl">🪙</div>
                     </div>
                     
                     <div class="grid grid-cols-3 gap-4 text-center">
-                        <div class="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                            <div class="text-2xl font-bold text-black">
+                        <div class="p-4 bg-green-50 rounded-lg">
+                            <div class="text-2xl font-bold text-green-600">
                                 {{ method_exists($user, 'getFormattedPointsBalance') ? $user->getFormattedPointsBalance() : number_format($user->points_balance ?? 0, 0, ',', '.') }}
                             </div>
                             <div class="text-sm text-gray-600">Available Points</div>
                         </div>
-                        <div class="p-4 bg-yellow-100 rounded-lg border border-yellow-300">
-                            <div class="text-2xl font-bold text-black">
+                        <div class="p-4 bg-blue-50 rounded-lg">
+                            <div class="text-2xl font-bold text-blue-600">
                                 {{ number_format($user->total_points_earned ?? 0, 0, ',', '.') }}
                             </div>
                             <div class="text-sm text-gray-600">Total Earned</div>
                         </div>
-                        <div class="p-4 bg-black rounded-lg">
-                            <div class="text-2xl font-bold text-yellow-400">
+                        <div class="p-4 bg-purple-50 rounded-lg">
+                            <div class="text-2xl font-bold text-purple-600">
                                 {{ number_format($user->total_points_redeemed ?? 0, 0, ',', '.') }}
                             </div>
-                            <div class="text-sm text-white">Total Redeemed</div>
+                            <div class="text-sm text-gray-600">Total Redeemed</div>
                         </div>
                     </div>
                     
-                    <div class="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                        <div class="text-sm text-black">
+                    <div class="mt-4 p-3 bg-gray-50 rounded-lg">
+                        <div class="text-sm text-gray-600">
                             <strong>How it works:</strong> Earn {{ method_exists($user, 'getPointsPercentage') ? $user->getPointsPercentage() : '1' }}% points on every purchase with your {{ $user->getCustomerTierLabel() ?? 'Basic Member' }} status.
                         </div>
                     </div>
                 </div>
 
                 <!-- Profile Information Form -->
-                <div class="bg-white rounded-lg shadow-md p-6 border-2 border-yellow-400">
+                <div class="bg-white rounded-lg shadow-md p-6">
                     <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-xl font-semibold text-black">Profile Information</h2>
+                        <h2 class="text-xl font-semibold text-gray-900">Profile Information</h2>
                         
                         <button id="edit-profile-btn" 
-                                class="bg-yellow-400 text-black px-4 py-2 rounded hover:bg-yellow-500 transition-colors font-semibold">
+                                class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors">
                             Edit Profile
                         </button>
                     </div>
                     
                     <!-- Show locked fields info if any field is locked -->
                     @if(isset($lockedFields) && (($lockedFields['name'] ?? false) || ($lockedFields['email'] ?? false) || ($lockedFields['phone'] ?? false)))
-                        <div class="bg-yellow-50 border border-yellow-300 rounded-lg p-4 mb-6">
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                             <div class="flex items-start">
-                                <svg class="w-5 h-5 text-yellow-600 mt-0.5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <svg class="w-5 h-5 text-blue-500 mt-0.5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                                     <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"></path>
                                 </svg>
                                 <div>
-                                    <h3 class="text-sm font-medium text-black">Field Protection</h3>
-                                    <p class="text-sm text-gray-700 mt-1">
+                                    <h3 class="text-sm font-medium text-blue-800">Field Protection</h3>
+                                    <p class="text-sm text-blue-700 mt-1">
                                         Fields with data are protected and cannot be modified for security reasons.
                                         @if(($lockedFields['gender'] ?? false) === false || ($lockedFields['birthdate'] ?? false) === false)
                                             You can still edit empty fields like gender and birthdate.
@@ -177,70 +177,70 @@
                         <div id="profile-display" class="space-y-4">
                             <!-- Name -->
                             <div>
-                                <label class="block text-sm font-medium text-black mb-1">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
                                     Full Name
                                     @if($lockedFields['name'] ?? false)
-                                        <span class="text-xs text-yellow-600 ml-2">🔒 Protected</span>
+                                        <span class="text-xs text-blue-600 ml-2">🔒 Protected</span>
                                     @endif
                                 </label>
-                                <p class="text-black py-2 px-3 bg-gray-50 rounded border border-gray-200">
+                                <p class="text-gray-900 py-2 px-3 bg-gray-50 rounded">
                                     {{ $user->name ?? 'N/A' }}
                                 </p>
                             </div>
 
                             <!-- Email -->
                             <div>
-                                <label class="block text-sm font-medium text-black mb-1">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
                                     Email
                                     @if($lockedFields['email'] ?? false)
-                                        <span class="text-xs text-yellow-600 ml-2">🔒 Protected</span>
+                                        <span class="text-xs text-blue-600 ml-2">🔒 Protected</span>
                                     @endif
                                 </label>
-                                <p class="text-black py-2 px-3 bg-gray-50 rounded border border-gray-200">{{ $user->email ?? 'N/A' }}</p>
+                                <p class="text-gray-900 py-2 px-3 bg-gray-50 rounded">{{ $user->email ?? 'N/A' }}</p>
                             </div>
 
                             <!-- Phone -->
                             <div>
-                                <label class="block text-sm font-medium text-black mb-1">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
                                     Phone Number
                                     @if($lockedFields['phone'] ?? false)
-                                        <span class="text-xs text-yellow-600 ml-2">🔒 Protected</span>
+                                        <span class="text-xs text-blue-600 ml-2">🔒 Protected</span>
                                     @endif
                                 </label>
-                                <p class="text-black py-2 px-3 bg-gray-50 rounded border border-gray-200">
+                                <p class="text-gray-900 py-2 px-3 bg-gray-50 rounded">
                                     {{ $user->phone ?? 'Not set' }}
                                     @if(empty($user->phone))
-                                        <span class="text-black text-sm font-medium">(Required for completion)</span>
+                                        <span class="text-red-500 text-sm">(Required for completion)</span>
                                     @endif
                                 </p>
                             </div>
 
                             <!-- Gender -->
                             <div>
-                                <label class="block text-sm font-medium text-black mb-1">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
                                     Gender
                                     @if($lockedFields['gender'] ?? false)
-                                        <span class="text-xs text-yellow-600 ml-2">🔒 Protected</span>
+                                        <span class="text-xs text-blue-600 ml-2">🔒 Protected</span>
                                     @else
-                                        <span class="text-xs text-yellow-600 ml-2">✏️ Editable</span>
+                                        <span class="text-xs text-green-600 ml-2">✏️ Editable</span>
                                     @endif
                                 </label>
-                                <p class="text-black py-2 px-3 bg-gray-50 rounded border border-gray-200">
+                                <p class="text-gray-900 py-2 px-3 bg-gray-50 rounded">
                                     {{ $user->gender ? ucfirst($user->gender) : 'Not set' }}
                                 </p>
                             </div>
 
                             <!-- Birthdate -->
                             <div>
-                                <label class="block text-sm font-medium text-black mb-1">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
                                     Birthdate
                                     @if($lockedFields['birthdate'] ?? false)
-                                        <span class="text-xs text-yellow-600 ml-2">🔒 Protected</span>
+                                        <span class="text-xs text-blue-600 ml-2">🔒 Protected</span>
                                     @else
-                                        <span class="text-xs text-yellow-600 ml-2">✏️ Editable</span>
+                                        <span class="text-xs text-green-600 ml-2">✏️ Editable</span>
                                     @endif
                                 </label>
-                                <p class="text-black py-2 px-3 bg-gray-50 rounded border border-gray-200">
+                                <p class="text-gray-900 py-2 px-3 bg-gray-50 rounded">
                                     @if($user->birthdate)
                                         {{ \Carbon\Carbon::parse($user->birthdate)->format('d M Y') }}
                                         @php
@@ -258,15 +258,16 @@
                             {{-- Zodiac Display --}}
                             @if($user->zodiac && isset($zodiacInfo))
                             <div>
-                                <label class="block text-sm font-medium text-black mb-1">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
                                     Zodiac Sign
-                                    <span class="text-xs text-yellow-600 ml-2">✨ Auto-calculated</span>
+                                    <span class="text-xs text-purple-600 ml-2">✨ Auto-calculated</span>
                                 </label>
-                                <div class="py-2 px-3 bg-gradient-to-r from-yellow-50 to-yellow-100 rounded border-2 border-yellow-300">
+                                <div class="py-2 px-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded border border-purple-200">
                                     <div class="flex items-center space-x-3">
                                         <span class="text-2xl">{{ $zodiacInfo['symbol'] }}</span>
                                         <div>
-                                            <div class="font-semibold text-black">{{ $zodiacInfo['name'] }}</div>
+                                            <div class="font-semibold text-purple-800">{{ $zodiacInfo['name'] }}</div>
+                                            <div class="text-sm text-purple-600">{{ $zodiacInfo['dates'] }}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -275,10 +276,10 @@
 
                             <!-- Profile Completion Info -->
                             @if(!($isProfileLocked ?? false))
-                            <div class="bg-yellow-50 border border-yellow-300 rounded-lg p-4 mt-4">
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
                                 <div class="flex items-center justify-between">
-                                    <span class="text-sm font-medium text-black">Profile Completion</span>
-                                    <span class="text-sm text-black font-bold">
+                                    <span class="text-sm font-medium text-blue-800">Profile Completion</span>
+                                    <span class="text-sm text-blue-600">
                                         @php
                                             $requiredFields = ['name', 'email', 'phone'];
                                             $completedFields = 0;
@@ -290,11 +291,11 @@
                                         {{ $percentage }}%
                                     </span>
                                 </div>
-                                <div class="w-full bg-yellow-200 rounded-full h-2 mt-2">
-                                    <div class="bg-black h-2 rounded-full profile-progress-bar" data-width="{{ $percentage }}"></div>
+                                <div class="w-full bg-blue-200 rounded-full h-2 mt-2">
+                                    <div class="bg-blue-600 h-2 rounded-full profile-progress-bar" data-width="{{ $percentage }}"></div>
                                 </div>
                                 @if($percentage < 100)
-                                <p class="text-xs text-black mt-2">
+                                <p class="text-xs text-blue-700 mt-2">
                                     @php
                                         $missingFields = [];
                                         foreach($requiredFields as $field) {
@@ -306,7 +307,7 @@
                                     Missing: {{ implode(', ', $missingFields) }}
                                 </p>
                                 @else
-                                <p class="text-xs text-black mt-2">
+                                <p class="text-xs text-blue-700 mt-2">
                                     ✅ Profile completed! All required fields are filled.
                                 </p>
                                 @endif
@@ -318,10 +319,10 @@
                         <div id="profile-edit" class="hidden space-y-4">
                             <!-- Name -->
                             <div>
-                                <label for="name" class="block text-sm font-medium text-black mb-2">
+                                <label for="name" class="block text-sm font-medium text-gray-700 mb-2">
                                     Full Name *
                                     @if($lockedFields['name'] ?? false)
-                                        <span class="text-xs text-yellow-600 ml-2">🔒 Cannot be changed</span>
+                                        <span class="text-xs text-blue-600 ml-2">🔒 Cannot be changed</span>
                                     @endif
                                 </label>
                                 <input type="text" 
@@ -333,19 +334,19 @@
                                            class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-500 cursor-not-allowed"
                                        @else
                                            required
-                                           class="w-full px-3 py-2 border-2 border-yellow-300 rounded-md focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                        @endif>
                                 @if($lockedFields['name'] ?? false)
-                                    <p class="text-xs text-yellow-600 mt-1">This field is protected and cannot be modified</p>
+                                    <p class="text-xs text-blue-600 mt-1">This field is protected and cannot be modified</p>
                                 @endif
                             </div>
 
                             <!-- Email -->
                             <div>
-                                <label for="email" class="block text-sm font-medium text-black mb-2">
+                                <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
                                     Email *
                                     @if($lockedFields['email'] ?? false)
-                                        <span class="text-xs text-yellow-600 ml-2">🔒 Cannot be changed</span>
+                                        <span class="text-xs text-blue-600 ml-2">🔒 Cannot be changed</span>
                                     @endif
                                 </label>
                                 <input type="email" 
@@ -357,19 +358,19 @@
                                            class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-500 cursor-not-allowed"
                                        @else
                                            required
-                                           class="w-full px-3 py-2 border-2 border-yellow-300 rounded-md focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                        @endif>
                                 @if($lockedFields['email'] ?? false)
-                                    <p class="text-xs text-yellow-600 mt-1">This field is protected and cannot be modified</p>
+                                    <p class="text-xs text-blue-600 mt-1">This field is protected and cannot be modified</p>
                                 @endif
                             </div>
 
                             <!-- Phone -->
                             <div>
-                                <label for="phone" class="block text-sm font-medium text-black mb-2">
+                                <label for="phone" class="block text-sm font-medium text-gray-700 mb-2">
                                     Phone Number *
                                     @if($lockedFields['phone'] ?? false)
-                                        <span class="text-xs text-yellow-600 ml-2">🔒 Cannot be changed</span>
+                                        <span class="text-xs text-blue-600 ml-2">🔒 Cannot be changed</span>
                                     @endif
                                 </label>
                                 <input type="tel" 
@@ -382,10 +383,10 @@
                                            class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-500 cursor-not-allowed"
                                        @else
                                            required
-                                           class="w-full px-3 py-2 border-2 border-yellow-300 rounded-md focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                        @endif>
                                 @if($lockedFields['phone'] ?? false)
-                                    <p class="text-xs text-yellow-600 mt-1">This field is protected and cannot be modified</p>
+                                    <p class="text-xs text-blue-600 mt-1">This field is protected and cannot be modified</p>
                                 @elseif(empty($user->phone))
                                     <p class="text-xs text-gray-500 mt-1">Required for profile completion</p>
                                 @endif
@@ -393,10 +394,10 @@
 
                             <!-- Gender -->
                             <div>
-                                <label class="block text-sm font-medium text-black mb-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
                                     Gender
                                     @if(!($lockedFields['gender'] ?? false))
-                                        <span class="text-xs text-yellow-600 ml-2">✏️ Can be edited</span>
+                                        <span class="text-xs text-green-600 ml-2">✏️ Can be edited</span>
                                     @endif
                                 </label>
                                 <div class="flex space-x-4">
@@ -404,41 +405,41 @@
                                         <input type="radio" 
                                                name="gender" 
                                                value="mens" 
-                                               class="mr-2 text-yellow-400 focus:ring-yellow-400" 
+                                               class="mr-2" 
                                                {{ old('gender', $user->gender ?? '') == 'mens' ? 'checked' : '' }}
                                                @if($lockedFields['gender'] ?? false) disabled @endif>
-                                        <span class="text-sm {{ ($lockedFields['gender'] ?? false) ? 'text-gray-500' : 'text-black' }}">Mens</span>
+                                        <span class="text-sm {{ ($lockedFields['gender'] ?? false) ? 'text-gray-500' : '' }}">Mens</span>
                                     </label>
                                     <label class="flex items-center">
                                         <input type="radio" 
                                                name="gender" 
                                                value="womens" 
-                                               class="mr-2 text-yellow-400 focus:ring-yellow-400" 
+                                               class="mr-2" 
                                                {{ old('gender', $user->gender ?? '') == 'womens' ? 'checked' : '' }}
                                                @if($lockedFields['gender'] ?? false) disabled @endif>
-                                        <span class="text-sm {{ ($lockedFields['gender'] ?? false) ? 'text-gray-500' : 'text-black' }}">Womens</span>
+                                        <span class="text-sm {{ ($lockedFields['gender'] ?? false) ? 'text-gray-500' : '' }}">Womens</span>
                                     </label>
                                     <label class="flex items-center">
                                         <input type="radio" 
                                                name="gender" 
                                                value="kids" 
-                                               class="mr-2 text-yellow-400 focus:ring-yellow-400" 
+                                               class="mr-2" 
                                                {{ old('gender', $user->gender ?? '') == 'kids' ? 'checked' : '' }}
                                                @if($lockedFields['gender'] ?? false) disabled @endif>
-                                        <span class="text-sm {{ ($lockedFields['gender'] ?? false) ? 'text-gray-500' : 'text-black' }}">Kids</span>
+                                        <span class="text-sm {{ ($lockedFields['gender'] ?? false) ? 'text-gray-500' : '' }}">Kids</span>
                                     </label>
                                 </div>
                                 @if($lockedFields['gender'] ?? false)
-                                    <p class="text-xs text-yellow-600 mt-1">This field is protected and cannot be modified</p>
+                                    <p class="text-xs text-blue-600 mt-1">This field is protected and cannot be modified</p>
                                 @endif
                             </div>
 
                             <!-- Birthdate -->
                             <div>
-                                <label for="birthdate" class="block text-sm font-medium text-black mb-2">
+                                <label for="birthdate" class="block text-sm font-medium text-gray-700 mb-2">
                                     Birthdate
                                     @if(!($lockedFields['birthdate'] ?? false))
-                                        <span class="text-xs text-yellow-600 ml-2">✏️ Can be edited</span>
+                                        <span class="text-xs text-green-600 ml-2">✏️ Can be edited</span>
                                     @endif
                                 </label>
                                 <input type="date" 
@@ -449,14 +450,14 @@
                                            disabled
                                            class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-500 cursor-not-allowed"
                                        @else
-                                           class="w-full px-3 py-2 border-2 border-yellow-300 rounded-md focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                        @endif>
                                 @if($lockedFields['birthdate'] ?? false)
-                                    <p class="text-xs text-yellow-600 mt-1">This field is protected and cannot be modified</p>
+                                    <p class="text-xs text-blue-600 mt-1">This field is protected and cannot be modified</p>
                                 @endif
 
                                 {{-- Real-time Zodiac Preview --}}
-                                <div id="zodiac-preview" class="mt-3 p-3 bg-gradient-to-r from-yellow-400 to-yellow-500 text-black rounded-lg hidden">
+                                <div id="zodiac-preview" class="mt-3 p-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hidden">
                                     <div class="flex items-center space-x-3">
                                         <span id="zodiac-symbol" class="text-2xl"></span>
                                         <div>
@@ -468,26 +469,26 @@
                             </div>
 
                             <!-- Action Buttons -->
-                            <div class="flex space-x-4 mt-6 pt-4 border-t border-yellow-300">
+                            <div class="flex space-x-4 mt-6 pt-4 border-t">
                                 <button type="submit" 
-                                        class="bg-yellow-400 text-black px-6 py-2 rounded hover:bg-yellow-500 transition-colors font-semibold">
+                                        class="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 transition-colors">
                                     Save Changes
                                 </button>
                                 <button type="button" id="cancel-edit-btn"
-                                        class="bg-black text-white px-6 py-2 rounded hover:bg-gray-800 transition-colors">
+                                        class="bg-gray-300 text-gray-700 px-6 py-2 rounded hover:bg-gray-400 transition-colors">
                                     Cancel
                                 </button>
                             </div>
                             
                             <!-- Field Protection Notice -->
-                            <div class="bg-yellow-50 border border-yellow-300 rounded-lg p-4 mt-4">
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4">
                                 <div class="flex items-start">
-                                    <svg class="w-5 h-5 text-yellow-600 mt-0.5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <svg class="w-5 h-5 text-yellow-400 mt-0.5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                                         <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
                                     </svg>
                                     <div>
-                                        <h4 class="text-sm font-medium text-black">Field Protection System</h4>
-                                        <p class="text-sm text-gray-700 mt-1">
+                                        <h4 class="text-sm font-medium text-yellow-800">Field Protection System</h4>
+                                        <p class="text-sm text-yellow-700 mt-1">
                                             Once a field is filled with data, it becomes protected and cannot be changed for security reasons. 
                                             Empty fields can still be edited until they are filled.
                                         </p>
@@ -503,17 +504,17 @@
             <div class="space-y-6">
                 
                 <!-- Tier Benefits Info -->
-                <div class="bg-white rounded-lg shadow-md p-6 border-2 border-yellow-400">
-                    <h2 class="text-xl font-semibold mb-4 text-black">Tier Benefits</h2>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4">Tier Benefits</h2>
                     
                     <div class="space-y-3">
                         <!-- Basic Tier -->
                         @php $isBasic = $currentTier === 'basic'; @endphp
-                        <div class="p-3 rounded-lg {{ $isBasic ? 'bg-yellow-100 border-2 border-yellow-400' : 'bg-gray-50 border border-gray-200' }}">
+                        <div class="p-3 rounded-lg {{ $isBasic ? 'bg-gray-100 border-2 border-gray-400' : 'bg-gray-50' }}">
                             <div class="flex items-center justify-between mb-2">
-                                <span class="font-medium text-black">🥉 Basic Member</span>
+                                <span class="font-medium text-gray-900">🥉 Basic Member</span>
                                 @if($isBasic)
-                                    <span class="px-2 py-1 bg-yellow-400 text-black text-xs rounded-full font-semibold">Current</span>
+                                    <span class="px-2 py-1 bg-gray-500 text-white text-xs rounded-full">Current</span>
                                 @endif
                             </div>
                             <div class="text-sm text-gray-600">
@@ -525,14 +526,14 @@
                         
                         <!-- Advance Tier -->
                         @php $isAdvance = $currentTier === 'advance'; @endphp
-                        <div class="p-3 rounded-lg {{ $isAdvance ? 'bg-yellow-100 border-2 border-yellow-400' : 'bg-gray-50 border border-gray-200' }}">
+                        <div class="p-3 rounded-lg {{ $isAdvance ? 'bg-blue-100 border-2 border-blue-400' : 'bg-blue-50' }}">
                             <div class="flex items-center justify-between mb-2">
-                                <span class="font-medium text-black">🥇 Advance Member</span>
+                                <span class="font-medium text-blue-900">🥇 Advance Member</span>
                                 @if($isAdvance)
-                                    <span class="px-2 py-1 bg-yellow-400 text-black text-xs rounded-full font-semibold">Current</span>
+                                    <span class="px-2 py-1 bg-blue-500 text-white text-xs rounded-full">Current</span>
                                 @endif
                             </div>
-                            <div class="text-sm text-gray-600">
+                            <div class="text-sm text-blue-700">
                                 • 2.5% points on every purchase<br>
                                 • Priority customer support<br>
                                 • Requires Rp 5M spending in 6 months
@@ -541,14 +542,14 @@
                         
                         <!-- Ultimate Tier -->
                         @php $isUltimate = $currentTier === 'ultimate'; @endphp
-                        <div class="p-3 rounded-lg {{ $isUltimate ? 'bg-yellow-100 border-2 border-yellow-400' : 'bg-gray-50 border border-gray-200' }}">
+                        <div class="p-3 rounded-lg {{ $isUltimate ? 'bg-purple-100 border-2 border-purple-400' : 'bg-purple-50' }}">
                             <div class="flex items-center justify-between mb-2">
-                                <span class="font-medium text-black">💎 Ultimate Member</span>
+                                <span class="font-medium text-purple-900">💎 Ultimate Member</span>
                                 @if($isUltimate)
-                                    <span class="px-2 py-1 bg-yellow-400 text-black text-xs rounded-full font-semibold">Current</span>
+                                    <span class="px-2 py-1 bg-purple-500 text-white text-xs rounded-full">Current</span>
                                 @endif
                             </div>
-                            <div class="text-sm text-gray-600">
+                            <div class="text-sm text-purple-700">
                                 • 5% points on every purchase<br>
                                 • VIP customer support<br>
                                 • Exclusive offers & early access<br>
@@ -557,16 +558,55 @@
                         </div>
                     </div>
                     
-                    <div class="mt-4 p-3 bg-yellow-50 border border-yellow-300 rounded-lg">
-                        <div class="text-xs text-black">
+                    <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <div class="text-xs text-yellow-700">
                             <strong>Note:</strong> Tier evaluation happens monthly. If spending drops below tier requirement for 6 months, tier will be downgraded.
                         </div>
                     </div>
                 </div>
 
+                {{-- Zodiac Info Card --}}
+                @if($user->zodiac && isset($zodiacInfo))
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4">Your Zodiac</h2>
+                    
+                    <div class="text-center mb-4">
+                        <div class="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <span class="text-2xl text-white">{{ $zodiacInfo['symbol'] }}</span>
+                        </div>
+                        <h4 class="text-xl font-bold text-gray-900">{{ $zodiacInfo['name'] }}</h4>
+                        <p class="text-sm text-gray-600">{{ $zodiacInfo['dates'] }}</p>
+                    </div>
+                    
+                    <div class="space-y-3 mb-4">
+                        <div class="flex justify-between">
+                            <span class="text-sm font-medium text-gray-700">Element:</span>
+                            <span class="text-gray-900">{{ $zodiacInfo['element'] }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm font-medium text-gray-700">Ruling Planet:</span>
+                            <span class="text-gray-900">{{ $zodiacInfo['ruling_planet'] }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="text-sm text-gray-700">{{ $zodiacInfo['description'] }}</p>
+                    </div>
+                    
+                    <div>
+                        <span class="text-sm font-medium text-gray-700">Key Traits:</span>
+                        <div class="flex flex-wrap gap-1 mt-2">
+                            @foreach($zodiacInfo['traits'] as $trait)
+                                <span class="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">{{ $trait }}</span>
+                            @endforeach
+                        </div>
+                    </div>
+                </div>
+                @endif
+
                 <!-- Address Management -->
-                <div class="bg-white rounded-lg shadow-md p-6 border-2 border-yellow-400">
-                    <h2 class="text-xl font-semibold mb-4 text-black">Address Management</h2>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4">Address Management</h2>
                     
                     @php
                         // Query langsung seperti controller bersih lainnya
@@ -576,40 +616,40 @@
                     
                     <div class="space-y-4">
                         <!-- Address Count -->
-                        <div class="text-center p-4 bg-yellow-50 rounded-lg border border-yellow-300">
-                            <div class="text-2xl font-bold text-black">{{ $addressCount }}</div>
+                        <div class="text-center p-4 bg-green-50 rounded-lg">
+                            <div class="text-2xl font-bold text-green-600">{{ $addressCount }}</div>
                             <div class="text-sm text-gray-600">Saved Addresses</div>
                         </div>
                         
                         <!-- Primary Address Info -->
                         @if($primaryAddress)
-                            <div class="p-3 bg-yellow-100 border border-yellow-400 rounded-lg">
-                                <h4 class="font-medium text-black text-sm mb-1">Primary Address:</h4>
-                                <p class="text-xs text-black font-medium">{{ $primaryAddress->label }}</p>
-                                <p class="text-xs text-gray-700">{{ $primaryAddress->recipient_name }}</p>
-                                <p class="text-xs text-gray-700">{{ $primaryAddress->subdistrict_name }}, {{ $primaryAddress->city_name }}</p>
+                            <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                <h4 class="font-medium text-blue-800 text-sm mb-1">Primary Address:</h4>
+                                <p class="text-xs text-blue-700 font-medium">{{ $primaryAddress->label }}</p>
+                                <p class="text-xs text-blue-600">{{ $primaryAddress->recipient_name }}</p>
+                                <p class="text-xs text-blue-600">{{ $primaryAddress->subdistrict_name }}, {{ $primaryAddress->city_name }}</p>
                             </div>
                         @else
-                            <div class="p-3 bg-black border border-gray-600 rounded-lg">
-                                <p class="text-xs text-white">No primary address set</p>
+                            <div class="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                <p class="text-xs text-orange-700">No primary address set</p>
                             </div>
                         @endif
                         
                         <!-- Action Buttons -->
                         <div class="space-y-2">
                             <a href="{{ route('profile.addresses.index') }}" 
-                               class="block w-full text-center bg-yellow-400 text-black py-2 rounded hover:bg-yellow-500 transition-colors text-sm font-semibold">
+                               class="block w-full text-center bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition-colors text-sm">
                                 Manage Addresses
                             </a>
                             
                             <a href="{{ route('profile.addresses.create') }}" 
-                               class="block w-full text-center bg-black text-white py-2 rounded hover:bg-gray-800 transition-colors text-sm">
+                               class="block w-full text-center bg-green-600 text-white py-2 rounded hover:bg-green-700 transition-colors text-sm">
                                 + Add New Address
                             </a>
                         </div>
                         
                         <!-- Quick Info -->
-                        <div class="text-xs text-gray-600 bg-gray-50 p-2 rounded border">
+                        <div class="text-xs text-gray-500 bg-gray-50 p-2 rounded">
                             <p>• Primary address is used for checkout</p>
                             <p>• You can have multiple delivery addresses</p>
                             <p>• Addresses are used for shipping calculations</p>
@@ -618,18 +658,18 @@
                 </div>
 
                 <!-- Order Statistics -->
-                <div class="bg-white rounded-lg shadow-md p-6 border-2 border-yellow-400">
-                    <h2 class="text-xl font-semibold mb-4 text-black">Order Statistics</h2>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4">Order Statistics</h2>
                     
                     <div class="grid grid-cols-1 gap-4">
-                        <div class="text-center p-4 bg-yellow-50 rounded-lg border border-yellow-300">
-                            <div class="text-2xl font-bold text-black">
+                        <div class="text-center p-4 bg-blue-50 rounded-lg">
+                            <div class="text-2xl font-bold text-blue-600">
                                 {{ $user->total_orders ?? $totalOrders ?? 0 }}
                             </div>
                             <div class="text-sm text-gray-600">Total Orders</div>
                         </div>
-                        <div class="text-center p-4 bg-yellow-100 rounded-lg border border-yellow-400">
-                            <div class="text-2xl font-bold text-black">
+                        <div class="text-center p-4 bg-green-50 rounded-lg">
+                            <div class="text-2xl font-bold text-green-600">
                                 @if(method_exists($user, 'getFormattedTotalSpent'))
                                     {{ $user->getFormattedTotalSpent() }}
                                 @else
@@ -638,40 +678,123 @@
                             </div>
                             <div class="text-sm text-gray-600">Total Spent (All Time)</div>
                         </div>
-                        <div class="text-center p-4 bg-black rounded-lg">
-                            <div class="text-2xl font-bold text-yellow-400">
+                        <div class="text-center p-4 bg-purple-50 rounded-lg">
+                            <div class="text-2xl font-bold text-purple-600">
                                 @if(method_exists($user, 'getFormattedAverageOrderValue'))
                                     {{ $user->getFormattedAverageOrderValue() }}
                                 @else
                                     Rp {{ number_format(($user->total_orders ?? 0) > 0 ? ($user->total_spent ?? 0) / ($user->total_orders ?? 1) : 0, 0, ',', '.') }}
                                 @endif
                             </div>
-                            <div class="text-sm text-white">Average Order</div>
+                            <div class="text-sm text-gray-600">Average Order</div>
                         </div>
                     </div>
 
                     @if(Route::has('orders.index'))
                     <a href="{{ route('orders.index') }}" 
-                       class="mt-4 block w-full text-center bg-yellow-400 text-black py-2 rounded hover:bg-yellow-500 transition-colors font-semibold">
+                       class="mt-4 block w-full text-center bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition-colors">
                         View Order History
                     </a>
                     @endif
                 </div>
 
                 <!-- Account Settings -->
-                <div class="bg-white rounded-lg shadow-md p-6 border-2 border-yellow-400">
-                    <h2 class="text-xl font-semibold mb-4 text-black">Account Settings</h2>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4">Account Settings</h2>
                     
                     <div class="space-y-3">
                         <a href="{{ route('profile.password.change') }}" 
-                           class="block w-full text-left bg-yellow-50 hover:bg-yellow-100 p-3 rounded transition-colors border border-yellow-200">
-                            <div class="font-medium text-black">Change Password</div>
+                           class="block w-full text-left bg-gray-50 hover:bg-gray-100 p-3 rounded transition-colors">
+                            <div class="font-medium">Change Password</div>
                             <div class="text-sm text-gray-600">Update your password</div>
                         </a>
                         
-                        
+                        <div class="block w-full text-left bg-gray-50 p-3 rounded">
+                            <div class="font-medium">Account Status</div>
+                            <div class="text-sm text-gray-600">
+                                @if($user->email_verified_at)
+                                    <span class="text-green-600">✓ Email Verified</span>
+                                @else
+                                    <span class="text-yellow-600">⚠ Email Not Verified</span>
+                                @endif
+                                
+                                @if(method_exists($user, 'isProfileComplete') ? $user->isProfileComplete() : ($isProfileLocked ?? false))
+                                    <br><span class="text-green-600">✅ Profile Complete</span>
+                                @else
+                                    <br><span class="text-orange-600">⚠ Profile Incomplete</span>
+                                @endif
+                                
+                                <br><span class="text-green-600">📍 {{ $addressCount }} Address{{ $addressCount != 1 ? 'es' : '' }}</span>
+                                
+                                {{-- Zodiac Status --}}
+                                @if($user->zodiac)
+                                    <br><span class="text-purple-600">✨ Zodiac: {{ $user->zodiac }}</span>
+                                @endif
+
+                                {{-- Tier Status --}}
+                                <br><span class="text-{{ $currentTier === 'ultimate' ? 'purple' : ($currentTier === 'advance' ? 'blue' : 'gray') }}-600">
+                                    @if($currentTier === 'ultimate')
+                                        💎 Ultimate Member
+                                    @elseif($currentTier === 'advance')
+                                        🥇 Advance Member
+                                    @else
+                                        🥉 Basic Member
+                                    @endif
+                                </span>
+
+                                {{-- Points Status --}}
+                                @if(($user->points_balance ?? 0) > 0)
+                                    <br><span class="text-yellow-600">🪙 {{ number_format($user->points_balance ?? 0, 0, ',', '.') }} Points</span>
+                                @endif
+                            </div>
+                        </div>
                     </div>
                 </div>
+
+                <!-- Recent Activity -->
+                @if((method_exists($user, 'getLastOrderDate') && $user->getLastOrderDate()) || $user->spending_updated_at || $user->last_tier_evaluation)
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4">Recent Activity</h2>
+                    
+                    <div class="space-y-3">
+                        @if(method_exists($user, 'getLastOrderDate') && $user->getLastOrderDate())
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                            <div>
+                                <div class="font-medium text-gray-900">Last Order</div>
+                                <div class="text-sm text-gray-600">
+                                    {{ $user->getLastOrderDate()->format('M d, Y') }}
+                                </div>
+                            </div>
+                            <div class="text-2xl">📦</div>
+                        </div>
+                        @endif
+                        
+                        @if($user->spending_updated_at)
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                            <div>
+                                <div class="font-medium text-gray-900">Stats Updated</div>
+                                <div class="text-sm text-gray-600">
+                                    {{ $user->spending_updated_at->format('M d, Y H:i') }}
+                                </div>
+                            </div>
+                            <div class="text-2xl">📊</div>
+                        </div>
+                        @endif
+                        
+                        @if($user->last_tier_evaluation)
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                            <div>
+                                <div class="font-medium text-gray-900">Tier Evaluated</div>
+                                <div class="text-sm text-gray-600">
+                                    {{ $user->last_tier_evaluation->format('M d, Y') }}
+                                </div>
+                            </div>
+                            <div class="text-2xl">🏆</div>
+                        </div>
+                        @endif
+                    </div>
+                </div>
+                @endif
             </div>
         </div>
     </div>
@@ -684,16 +807,16 @@
 }
 
 /* Tier card gradient fixes */
-.bg-gradient-to-r.from-black.to-gray-800 {
-    background: linear-gradient(to right, #000000, #1F2937);
+.bg-gradient-to-r.from-gray-500.to-gray-600 {
+    background: linear-gradient(to right, #6B7280, #4B5563);
 }
 
-.bg-gradient-to-r.from-yellow-400.to-yellow-500 {
-    background: linear-gradient(to right, #FBBF24, #F59E0B);
+.bg-gradient-to-r.from-blue-500.to-blue-600 {
+    background: linear-gradient(to right, #3B82F6, #2563EB);
 }
 
-.bg-gradient-to-r.from-yellow-50.to-yellow-100 {
-    background: linear-gradient(to right, #FFFBEB, #FEF3C7);
+.bg-gradient-to-r.from-purple-500.to-purple-600 {
+    background: linear-gradient(to right, #8B5CF6, #7C3AED);
 }
 
 /* Responsive fixes */
@@ -720,77 +843,6 @@
 
 .profile-progress-bar.animate {
     animation: progressFill 1s ease-out;
-}
-
-/* Custom radio button styling for yellow theme */
-input[type="radio"]:checked {
-    background-color: #FBBF24;
-    border-color: #F59E0B;
-}
-
-input[type="radio"]:focus {
-    ring-color: #FBBF24;
-    border-color: #F59E0B;
-}
-
-/* Form focus states */
-input:focus, select:focus, textarea:focus {
-    outline: none;
-    ring: 2px;
-    ring-color: #FBBF24;
-    border-color: #F59E0B;
-}
-
-/* Yellow accent borders */
-.border-yellow-300 {
-    border-color: #FCD34D;
-}
-
-.border-yellow-400 {
-    border-color: #FBBF24;
-}
-
-/* Background colors */
-.bg-yellow-50 {
-    background-color: #FFFBEB;
-}
-
-.bg-yellow-100 {
-    background-color: #FEF3C7;
-}
-
-.bg-yellow-400 {
-    background-color: #FBBF24;
-}
-
-.bg-yellow-500 {
-    background-color: #F59E0B;
-}
-
-/* Text colors */
-.text-yellow-400 {
-    color: #FBBF24;
-}
-
-.text-yellow-500 {
-    color: #F59E0B;
-}
-
-.text-yellow-600 {
-    color: #D97706;
-}
-
-/* Hover states */
-.hover\\:bg-yellow-100:hover {
-    background-color: #FEF3C7;
-}
-
-.hover\\:bg-yellow-500:hover {
-    background-color: #F59E0B;
-}
-
-.hover\\:bg-gray-800:hover {
-    background-color: #1F2937;
 }
 </style>
 
