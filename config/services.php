@@ -89,4 +89,12 @@ return [
         'province' => env('STORE_PROVINCE'),
         'rajaongkir_location_id' => env('STORE_RAJAONGKIR_LOCATION_ID'),
     ],
+    'ginee' => [
+        'api_url' => env('GINEE_API_URL', 'https://api.ginee.com'),
+        'access_key' => env('GINEE_ACCESS_KEY'), // Access Key dari dashboard
+        'secret_key' => env('GINEE_SECRET_KEY'), // Secret Key dari dashboard
+        'timeout' => env('GINEE_API_TIMEOUT', 30),
+        'cache_duration' => env('GINEE_CACHE_DURATION', 600), // 10 minutes
+        'country' => env('GINEE_COUNTRY', 'ID'), // Indonesia
+    ],
 ];

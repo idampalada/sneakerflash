@@ -896,6 +896,257 @@ class ProductResource extends Resource
                         }
                     }),
 
+                    // 🔄 GINEE SIMPLE STOCK SYNC - Hanya sync stock dari Ginee (tanpa spreadsheet)
+Tables\Actions\Action::make('ginee_simple_stock_sync')
+    ->label('📦 Ginee Stock Only')
+    ->icon('heroicon-o-cube')
+    ->color('info')
+    ->requiresConfirmation()
+    ->modalHeading('Sync Stock from Ginee Only')
+    ->modalDescription('This will update stock quantities for existing products based on MSKU from Ginee. No products will be created or deleted. Google Sheets is not used.')
+    ->modalSubmitActionLabel('Start Ginee Stock Sync')
+    ->form([
+        Forms\Components\Placeholder::make('ginee_simple_info')
+            ->label('📦 Ginee Stock-Only Sync')
+            ->content('
+                <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; border: 1px solid #bbdefb;">
+                    <h4 style="margin: 0 0 10px 0; color: #1565c0;">🔄 How This Works</h4>
+                    <ul style="margin: 5px 0; color: #1565c0;">
+                        <li><strong>✅ Stock from Ginee:</strong> Updates stock from Ginee MSKU API</li>
+                        <li><strong>🚫 No Google Sheets:</strong> Ignores spreadsheet completely</li>
+                        <li><strong>🔒 Existing Products Only:</strong> Updates products already in database</li>
+                        <li><strong>🛡️ Safe Mode:</strong> No products created or deleted</li>
+                        <li><strong>⚡ Fast:</strong> Direct Ginee → Database sync</li>
+                    </ul>
+                </div>
+            '),
+
+        Forms\Components\Placeholder::make('preview_simple_info')
+            ->label('📋 Preview Information')
+            ->content(function () {
+                try {
+                    $gineeService = new \App\Services\GineeOnlyStockSyncService();
+                    $preview = $gineeService->previewStockSync();
+                    
+                    if ($preview['success']) {
+                        $totalProducts = \App\Models\Product::count();
+                        $matchedSkus = count($preview['matched_skus']);
+                        $unmatchedSkus = count($preview['unmatched_skus']);
+                        $gineeProducts = count($preview['ginee_products']);
+                        
+                        return "
+                            <div style='background: #f3e5f5; padding: 15px; border-radius: 8px; border: 1px solid #e1bee7;'>
+                                <h4 style='margin: 0 0 10px 0; color: #7b1fa2;'>📊 Stock Sync Preview</h4>
+                                <table style='width: 100%; font-size: 13px;'>
+                                    <tr><td><strong>🗄️ Products in Database:</strong></td><td>{$totalProducts}</td></tr>
+                                    <tr><td><strong>📦 Products from Ginee API:</strong></td><td>{$gineeProducts}</td></tr>
+                                    <tr><td><strong>✅ Will Update Stock:</strong></td><td style='color: green;'>{$matchedSkus}</td></tr>
+                                    <tr><td><strong>⚠️ Not Found in Ginee:</strong></td><td style='color: orange;'>{$unmatchedSkus}</td></tr>
+                                </table>
+                                
+                                <div style='margin-top: 10px; font-size: 12px; color: #7b1fa2;'>
+                                    <strong>Match Rate:</strong> " . ($totalProducts > 0 ? round(($matchedSkus / $totalProducts) * 100, 1) : 0) . "%
+                                </div>
+                            </div>
+                        ";
+                    } else {
+                        return "
+                            <div style='background: #ffebee; padding: 15px; border-radius: 8px; border: 1px solid #ffcdd2;'>
+                                <h4 style='margin: 0 0 10px 0; color: #c62828;'>⚠️ Ginee API Error</h4>
+                                <p style='margin: 0; color: #c62828;'>{$preview['message']}</p>
+                            </div>
+                        ";
+                    }
+                } catch (Exception $e) {
+                    return "
+                        <div style='background: #ffebee; padding: 15px; border-radius: 8px; border: 1px solid #ffcdd2;'>
+                            <h4 style='margin: 0 0 10px 0; color: #c62828;'>❌ Preview Error</h4>
+                            <p style='margin: 0; color: #c62828;'>Error: {$e->getMessage()}</p>
+                        </div>
+                    ";
+                }
+            }),
+    ])
+    ->action(function () {
+        try {
+            // Jalankan sinkronisasi dengan Ginee saja
+            $gineeService = new \App\Services\GineeOnlyStockSyncService();
+            $result = $gineeService->syncStockFromGinee();
+
+            if ($result['success']) {
+                $stats = $result['stats'];
+                
+                Notification::make()
+                    ->title('✅ Ginee Stock Sync Successful!')
+                    ->body("Updated stock for {$stats['updated']} products. Not found in Ginee: {$stats['not_found_in_ginee']}")
+                    ->success()
+                    ->duration(10000)
+                    ->send();
+
+                if ($stats['errors'] > 0) {
+                    Notification::make()
+                        ->title('⚠️ Sync Warnings')
+                        ->body("Sync completed with {$stats['errors']} errors. Check logs for details.")
+                        ->warning()
+                        ->duration(8000)
+                        ->send();
+                }
+
+                if ($stats['not_found_in_database'] > 0) {
+                    Notification::make()
+                        ->title('ℹ️ Additional Info')
+                        ->body("Found {$stats['not_found_in_database']} products in Ginee that don't exist in database.")
+                        ->info()
+                        ->duration(6000)
+                        ->send();
+                }
+            } else {
+                Notification::make()
+                    ->title('❌ Ginee Stock Sync Failed')
+                    ->body($result['message'])
+                    ->danger()
+                    ->duration(15000)
+                    ->send();
+            }
+
+        } catch (Exception $e) {
+            Log::error('Ginee simple stock sync failed from admin', [
+                'error' => $e->getMessage(),
+                'user_id' => Auth::id(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            Notification::make()
+                ->title('❌ Ginee Stock Sync Failed')
+                ->body('Error: ' . $e->getMessage())
+                ->danger()
+                ->duration(15000)
+                ->send();
+        }
+    }),
+
+                    // 🔄 GINEE STOCK SYNC - Sync stock from Ginee MSKU
+Tables\Actions\Action::make('ginee_stock_sync')
+    ->label('📦 Ginee Stock Sync')
+    ->icon('heroicon-o-cube')
+    ->color('warning')
+    ->requiresConfirmation()
+    ->modalHeading('Sync Stock from Ginee - Safe Mode')
+    ->modalDescription('This will sync stock quantities from Ginee MSKU to your database based on SKU matching. Stock column in spreadsheet will be ignored. No products will be deleted.')
+    ->modalSubmitActionLabel('Start Ginee Stock Sync')
+    ->form([
+        Forms\Components\Placeholder::make('ginee_info')
+            ->label('📦 Ginee Stock Sync Information')
+            ->content('
+                <div style="background: #fff3cd; padding: 15px; border-radius: 8px; border: 1px solid #ffeaa7;">
+                    <h4 style="margin: 0 0 10px 0; color: #856404;">🔄 How Ginee Stock Sync Works</h4>
+                    <ul style="margin: 5px 0; color: #856404;">
+                        <li><strong>✅ Stock from Ginee:</strong> Stock quantities will be fetched from Ginee MSKU API</li>
+                        <li><strong>🚫 Ignore Spreadsheet Stock:</strong> Stock column in spreadsheet will be completely ignored</li>
+                        <li><strong>🔗 SKU Matching:</strong> Ginee MSKU will be matched with database SKU</li>
+                        <li><strong>🛡️ Safe Mode:</strong> No products will be deleted, only stock updates</li>
+                        <li><strong>📊 Other Data:</strong> Product name, price, etc. from spreadsheet will still be synced</li>
+                    </ul>
+                </div>
+            '),
+
+        Forms\Components\Placeholder::make('preview_info')
+            ->label('📋 Current Database vs Ginee Preview')
+            ->content(function () {
+                try {
+                    $gineeService = new \App\Services\GineeStockSyncService();
+                    $preview = $gineeService->previewStockSync();
+                    
+                    if ($preview['success']) {
+                        $totalProducts = \App\Models\Product::count();
+                        $matchedSkus = count($preview['matched_skus']);
+                        $unmatchedSkus = count($preview['unmatched_skus']);
+                        $gineeProducts = count($preview['ginee_products']);
+                        
+                        return "
+                            <div style='background: #e7f3ff; padding: 15px; border-radius: 8px; border: 1px solid #b3d9ff;'>
+                                <h4 style='margin: 0 0 10px 0; color: #0066cc;'>📊 Sync Preview</h4>
+                                <table style='width: 100%; font-size: 13px;'>
+                                    <tr><td><strong>🗄️ Total products in database:</strong></td><td>{$totalProducts}</td></tr>
+                                    <tr><td><strong>📦 Products from Ginee API:</strong></td><td>{$gineeProducts}</td></tr>
+                                    <tr><td><strong>✅ SKUs that will be updated:</strong></td><td style='color: green;'>{$matchedSkus}</td></tr>
+                                    <tr><td><strong>❌ SKUs not found in Ginee:</strong></td><td style='color: orange;'>{$unmatchedSkus}</td></tr>
+                                </table>
+                                
+                                <div style='margin-top: 10px; font-size: 12px; color: #666;'>
+                                    <strong>Sample matched SKUs:</strong><br>
+                                    " . implode(', ', array_slice($preview['matched_skus'], 0, 5)) . "
+                                    " . (count($preview['matched_skus']) > 5 ? '...' : '') . "
+                                </div>
+                            </div>
+                        ";
+                    } else {
+                        return "
+                            <div style='background: #ffe6e6; padding: 15px; border-radius: 8px; border: 1px solid #ffb3b3;'>
+                                <h4 style='margin: 0 0 10px 0; color: #cc0000;'>⚠️ Ginee API Connection Error</h4>
+                                <p style='margin: 0; color: #cc0000;'>{$preview['message']}</p>
+                            </div>
+                        ";
+                    }
+                } catch (Exception $e) {
+                    return "
+                        <div style='background: #ffe6e6; padding: 15px; border-radius: 8px; border: 1px solid #ffb3b3;'>
+                            <h4 style='margin: 0 0 10px 0; color: #cc0000;'>❌ Preview Error</h4>
+                            <p style='margin: 0; color: #cc0000;'>Error: {$e->getMessage()}</p>
+                        </div>
+                    ";
+                }
+            }),
+    ])
+    ->action(function () {
+        try {
+            // Jalankan sinkronisasi dengan Ginee
+            $gineeService = new \App\Services\GineeStockSyncService();
+            $result = $gineeService->syncStockWithSpreadsheet();
+
+            if ($result['success']) {
+                $stats = $result['stats'];
+                
+                Notification::make()
+                    ->title('✅ Ginee Stock Sync Successful!')
+                    ->body("Stock updated for {$stats['updated']} products. Created: {$stats['created']}, Skipped: {$stats['skipped']}. No products deleted.")
+                    ->success()
+                    ->duration(10000)
+                    ->send();
+
+                if ($stats['warnings'] > 0) {
+                    Notification::make()
+                        ->title('⚠️ Sync Warnings')
+                        ->body("Some SKUs were not found in Ginee ({$stats['warnings']} products). Check sync logs for details.")
+                        ->warning()
+                        ->duration(8000)
+                        ->send();
+                }
+            } else {
+                Notification::make()
+                    ->title('❌ Ginee Stock Sync Failed')
+                    ->body($result['message'])
+                    ->danger()
+                    ->duration(15000)
+                    ->send();
+            }
+
+        } catch (Exception $e) {
+            Log::error('Ginee stock sync failed from admin', [
+                'error' => $e->getMessage(),
+                'user_id' => Auth::id(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            Notification::make()
+                ->title('❌ Ginee Stock Sync Failed')
+                ->body('Error: ' . $e->getMessage())
+                ->danger()
+                ->duration(15000)
+                ->send();
+        }
+    }),
+
                 // 🔗 TEST CONNECTION
                 Tables\Actions\Action::make('test_connection')
                     ->label('🔗 Test Connection')
