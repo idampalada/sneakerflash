@@ -9,12 +9,15 @@ use App\Http\Controllers\Frontend\CheckoutController;
 use App\Http\Controllers\Frontend\OrderController;
 use App\Http\Controllers\Frontend\ProfileController;
 use App\Http\Controllers\Frontend\AddressController;
+use App\Http\Controllers\Frontend\GineeSyncController;
+use App\Http\Controllers\Frontend\GineeWebhookController;
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
+use App\Http\Middleware\VerifyCsrfToken;
 
 /*
 |--------------------------------------------------------------------------
@@ -519,3 +522,28 @@ Route::get('/payment/error', [CheckoutController::class, 'paymentError'])
     Route::get('/api/points/current', [CheckoutController::class, 'getCurrentPoints']);
     
 });
+
+Route::middleware(['auth'])->prefix('integrations/ginee')->name('ginee.')->group(function () {
+    // Stock Synchronization Routes
+    Route::post('/pull-products', [GineeStockSyncController::class, 'pullProducts'])->name('pull.products');
+    Route::post('/push-stock', [GineeStockSyncController::class, 'pushStock'])->name('push.stock');
+    Route::get('/ginee-stock', [GineeStockSyncController::class, 'getGineeStock'])->name('ginee.stock');
+    Route::get('/test-endpoints', [GineeStockSyncController::class, 'testEndpoints'])->name('test.endpoints');
+});
+
+Route::withoutMiddleware(['web'])
+    ->prefix('api/webhooks/ginee')
+    ->group(function () {
+        // health & event-specific (sudah ada)
+        Route::get('/health', fn () => response()->json(['ok'=>true,'ts'=>now()]));
+        Route::post('/orders', [\App\Http\Controllers\Frontend\GineeWebhookController::class, 'orders'])
+            ->name('webhooks.ginee.orders');
+        Route::post('/master-products', [\App\Http\Controllers\Frontend\GineeWebhookController::class, 'masterProducts'])
+            ->name('webhooks.ginee.master_products');
+
+        // ➜ GLOBAL endpoint (baru)
+        Route::match(['GET','POST'], '/global', [\App\Http\Controllers\Frontend\GineeWebhookController::class, 'global'])
+            ->name('webhooks.ginee.global');
+    });
+
+    

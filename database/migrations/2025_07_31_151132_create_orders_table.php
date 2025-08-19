@@ -14,8 +14,7 @@ return new class extends Migration
             $table->string('order_number', 100)->unique();
             
             // Customer Information (Support both registered & guest users)
-            // HAPUS foreign key constraint untuk users - buat nullable biasa
-            $table->unsignedBigInteger('user_id')->nullable(); // Tidak pakai constraint dulu
+            $table->unsignedBigInteger('user_id')->nullable(); // Tidak pakai constraint
             $table->string('customer_name')->nullable(); // For guest checkout
             $table->string('customer_email')->nullable(); // For guest checkout
             $table->string('customer_phone')->nullable(); // For guest checkout
@@ -66,7 +65,7 @@ return new class extends Migration
         Schema::create('order_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('order_id')->constrained('orders')->onDelete('cascade');
-            $table->unsignedBigInteger('product_id')->nullable();
+            $table->unsignedBigInteger('product_id')->nullable(); // Tidak pakai constraint
             
             // Product Information (snapshot at time of order)
             $table->string('product_name'); // Store name in case product deleted

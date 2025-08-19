@@ -28,6 +28,7 @@ class VerifyCsrfToken extends Middleware
         
         // Additional patterns for safety
         '*/payment-notification',             // Any path ending with payment-notification
-        '*/notification',                     // Any notification endpoint
+        '*/notification',
+        'api/webhooks/ginee/*',                     // Any notification endpoint
     ];
 }

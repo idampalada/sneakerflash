@@ -12,6 +12,17 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
+
+            $schedule->call(fn() => app(\App\Http\Controllers\GineeSyncController::class)->pullProducts())
+             ->everyFifteenMinutes();
+
+    $schedule->call(fn() => app(\App\Http\Controllers\GineeSyncController::class)->pushStock())
+             ->everyFiveMinutes();
+
+                 $schedule->call(function () {
+        request()->merge(['warehouseId' => 'WW64BE1DB61890960001D39C7D']);
+        app(\App\Http\Controllers\Frontend\InventoryPushController::class)->pushOnHand(request());
+    })->everyFiveMinutes();
         // Existing product sync (if you have it)
         $schedule->command('sync:google-sheets')
                  ->hourly()

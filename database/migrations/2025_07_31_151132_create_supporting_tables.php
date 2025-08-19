@@ -11,8 +11,7 @@ return new class extends Migration
         // Shopping Cart Table (for both logged in and guest users)
         Schema::create('shopping_cart', function (Blueprint $table) {
             $table->id();
-            // HAPUS foreign key constraint untuk users - buat nullable biasa  
-            $table->unsignedBigInteger('user_id')->nullable(); // Tidak pakai constraint dulu
+            $table->unsignedBigInteger('user_id')->nullable(); // Tidak pakai constraint
             $table->string('session_id')->nullable(); // For guest users
             $table->foreignId('product_id')->constrained('products')->onDelete('cascade');
             $table->integer('quantity');
@@ -63,8 +62,7 @@ return new class extends Migration
         // Wishlists Table
         Schema::create('wishlists', function (Blueprint $table) {
             $table->id();
-            // HAPUS foreign key constraint untuk users - buat nullable biasa
-            $table->unsignedBigInteger('user_id'); // Tidak pakai constraint dulu
+            $table->unsignedBigInteger('user_id'); // Tidak pakai constraint
             $table->foreignId('product_id')->constrained('products')->onDelete('cascade');
             $table->timestamps();
             
