@@ -523,14 +523,6 @@ Route::get('/payment/error', [CheckoutController::class, 'paymentError'])
     
 });
 
-Route::middleware(['auth'])->prefix('integrations/ginee')->name('ginee.')->group(function () {
-    // Stock Synchronization Routes
-    Route::post('/pull-products', [GineeStockSyncController::class, 'pullProducts'])->name('pull.products');
-    Route::post('/push-stock', [GineeStockSyncController::class, 'pushStock'])->name('push.stock');
-    Route::get('/ginee-stock', [GineeStockSyncController::class, 'getGineeStock'])->name('ginee.stock');
-    Route::get('/test-endpoints', [GineeStockSyncController::class, 'testEndpoints'])->name('test.endpoints');
-});
-
 Route::withoutMiddleware(['web'])
     ->prefix('api/webhooks/ginee')
     ->group(function () {
