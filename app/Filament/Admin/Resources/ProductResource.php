@@ -127,24 +127,42 @@ class ProductResource extends Resource
                 ->description('Upload high-quality product images. First image becomes the featured image.')
                 ->schema([
                     Forms\Components\FileUpload::make('images')
-                        ->label('Product Images')
-                        ->multiple()
-                        ->image()
-                        ->imageEditor()
-                        ->imageEditorAspectRatios([
-                            '1:1',
-                            '4:3', 
-                            '16:9',
-                        ])
-                        ->directory('products')
-                        ->visibility('public')
-                        ->maxFiles(10)
-                        ->reorderable()
-                        ->appendFiles()
-                        ->imagePreviewHeight('250')
-                        ->uploadingMessage('Uploading images...')
-                        ->helperText('Upload up to 10 images. First image will be the main featured image.')
-                        ->columnSpanFull(),
+    ->label('Product Images')
+    ->multiple()
+    ->image()
+    ->imageEditor()
+    ->imageEditorAspectRatios([
+        '1:1',
+        '4:3', 
+        '16:9',
+    ])
+    ->directory('products')
+    ->visibility('public')
+    ->maxFiles(10)
+    ->reorderable()
+    // 🔥 CRITICAL FIXES:
+    ->preserveFilenames()
+    ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+    ->loadStateFromRelationshipsUsing(function ($component, $state, $record) {
+        // 🎯 PRESERVE existing images saat edit
+        if ($record && $record->exists) {
+            $existingImages = $record->images ?? [];
+            if (!empty($existingImages) && is_array($existingImages)) {
+                $component->state($existingImages);
+            }
+        }
+        return $state;
+    })
+    ->saveUploadedFileUsing(function ($component, $file, $record) {
+        // 🎯 CUSTOM upload handling
+        $filename = 'product_' . time() . '_' . $file->getClientOriginalName();
+        $path = $file->storeAs('products', $filename, 'public');
+        return $path;
+    })
+    ->imagePreviewHeight('250')
+    ->uploadingMessage('Uploading images...')
+    ->helperText('Upload up to 10 images. First image will be the main featured image. Existing images will be preserved when editing.')
+    ->columnSpanFull(),
                 ]),
 
             // Product Description Section
@@ -1733,4 +1751,6 @@ class ProductResource extends Resource
             default => 'danger'
         };
     }
+    
+    
 }
