@@ -948,61 +948,230 @@ function displayLocationResults(locations) {
 function selectLocation(location) {
     console.log("📍 Location selected:", location);
 
-    // Fill location fields
-    fillFieldIfEmpty("province_name", location.province_name || "");
-    fillFieldIfEmpty("city_name", location.city_name || "");
-    fillFieldIfEmpty("subdistrict_name", location.subdistrict_name || "");
-    fillFieldIfEmpty(
-        "postal_code",
-        location.zip_code || location.postal_code || ""
-    );
-    fillFieldIfEmpty(
-        "destination_id",
-        location.location_id || location.destination_id || ""
-    );
+    // CRITICAL FIX: Pastikan destination_id selalu ada
+    const locationId =
+        location.id || location.location_id || location.destination_id;
+
+    if (!locationId) {
+        console.error("❌ No valid location ID found in:", location);
+        alert("Error: Invalid location data. Please try selecting again.");
+        return;
+    }
+
+    console.log("✅ Using location ID:", locationId);
+
+    // Fill location fields dengan pengecekan yang lebih robust
+    const provinceField = document.getElementById("province_name");
+    const cityField = document.getElementById("city_name");
+    const subdistrictField = document.getElementById("subdistrict_name");
+    const postalField = document.getElementById("postal_code");
+    const destinationField = document.getElementById("destination_id");
+
+    if (provinceField) provinceField.value = location.province_name || "";
+    if (cityField) cityField.value = location.city_name || "";
+    if (subdistrictField)
+        subdistrictField.value = location.subdistrict_name || "";
+    if (postalField)
+        postalField.value = location.zip_code || location.postal_code || "";
+
+    // CRITICAL: Pastikan destination_id field ada dan terisi
+    if (destinationField) {
+        destinationField.value = locationId;
+        console.log("✅ destination_id field updated:", locationId);
+    } else {
+        console.error("❌ destination_id field not found!");
+        // Buat field hidden jika tidak ada
+        const hiddenField = document.createElement("input");
+        hiddenField.type = "hidden";
+        hiddenField.id = "destination_id";
+        hiddenField.name = "destination_id";
+        hiddenField.value = locationId;
+        document.getElementById("checkout-form").appendChild(hiddenField);
+        console.log("✅ Created destination_id hidden field:", locationId);
+    }
 
     // Fill legacy fields for backward compatibility
-    fillFieldIfEmpty(
-        "legacy_address",
-        location.full_address || location.label || ""
-    );
-    fillFieldIfEmpty(
-        "legacy_destination_label",
-        location.full_address || location.label || ""
+    const fullAddress =
+        location.full_address ||
+        location.label ||
+        `${location.subdistrict_name}, ${location.city_name}, ${location.province_name}`;
+
+    const legacyAddress = document.getElementById("legacy_address");
+    const legacyDestinationLabel = document.getElementById(
+        "legacy_destination_label"
     );
 
-    // Update selectedDestination for shipping calculation
-    selectedDestination = location;
+    if (legacyAddress) legacyAddress.value = fullAddress;
+    if (legacyDestinationLabel) legacyDestinationLabel.value = fullAddress;
+
+    // PERBAIKAN: Update selectedDestination dengan format yang konsisten
+    selectedDestination = {
+        id: locationId,
+        location_id: locationId,
+        destination_id: locationId,
+        subdistrict_name: location.subdistrict_name || "",
+        district_name: location.district_name || "",
+        city_name: location.city_name || "",
+        province_name: location.province_name || "",
+        zip_code: location.zip_code || location.postal_code || "",
+        label: location.label || fullAddress,
+        full_address: fullAddress,
+        display_name:
+            location.display_name ||
+            `${location.subdistrict_name}, ${location.city_name}`,
+    };
+
+    console.log("✅ selectedDestination updated:", selectedDestination);
 
     // Display selected location
-    const selectedLocation = document.getElementById("selected-location");
+    const selectedLocationDiv = document.getElementById("selected-location");
     const selectedLocationText = document.getElementById(
         "selected-location-text"
     );
 
-    if (selectedLocation && selectedLocationText) {
-        selectedLocationText.textContent =
-            location.full_address ||
-            location.label ||
-            location.subdistrict_name +
-                ", " +
-                location.city_name +
-                ", " +
-                location.province_name;
-        selectedLocation.classList.remove("hidden");
+    if (selectedLocationDiv && selectedLocationText) {
+        selectedLocationText.textContent = fullAddress;
+        selectedLocationDiv.classList.remove("hidden");
     }
 
     // Hide search results
-    document.getElementById("location-results").classList.add("hidden");
+    const locationResults = document.getElementById("location-results");
+    if (locationResults) {
+        locationResults.classList.add("hidden");
+    }
 
     // Clear search input
-    document.getElementById("location_search").value = "";
+    const locationSearch = document.getElementById("location_search");
+    if (locationSearch) {
+        locationSearch.value = "";
+    }
 
-    // Trigger shipping calculation if we're on step 3
+    // TRIGGER shipping calculation dengan delay untuk memastikan field sudah terisi
     if (currentStep >= 3) {
-        setTimeout(() => calculateShipping(), 500);
+        console.log(
+            "🚚 Triggering shipping calculation with destination_id:",
+            locationId
+        );
+        setTimeout(() => {
+            // Double-check destination_id sebelum calculate
+            const finalDestinationId =
+                document.getElementById("destination_id")?.value;
+            console.log(
+                "🔍 Final destination_id before calculation:",
+                finalDestinationId
+            );
+
+            if (finalDestinationId) {
+                calculateShipping();
+            } else {
+                console.error(
+                    "❌ destination_id still empty, cannot calculate shipping"
+                );
+                displayShippingError("Please select location again");
+            }
+        }, 500);
     }
 }
+
+// TAMBAHAN: Function untuk memverifikasi field destination_id
+function verifyDestinationId() {
+    const destinationId = document.getElementById("destination_id")?.value;
+    console.log("🔍 Current destination_id:", destinationId);
+
+    if (!destinationId) {
+        console.warn("⚠️ destination_id is empty!");
+        return false;
+    }
+
+    console.log("✅ destination_id verified:", destinationId);
+    return true;
+}
+
+// PERBAIKAN untuk showNewAddressForm function
+function showNewAddressForm() {
+    console.log("📝 Showing new address form");
+
+    const newAddressForm = document.getElementById("new-address-form");
+    if (newAddressForm) {
+        newAddressForm.classList.remove("hidden");
+    }
+
+    // FIXED: Get user data from meta tags and pre-fill
+    const authenticatedUserName =
+        document.querySelector('meta[name="authenticated-user-name"]')
+            ?.content || "";
+    const authenticatedUserPhone =
+        document.querySelector('meta[name="authenticated-user-phone"]')
+            ?.content || "";
+
+    // Pre-fill with user data
+    fillFieldIfEmpty("recipient_name", authenticatedUserName);
+    fillFieldIfEmpty("phone_recipient", authenticatedUserPhone);
+
+    // Clear other fields dengan pengecekan yang lebih robust
+    const streetAddressField = document.getElementById("street_address");
+    const provinceField = document.getElementById("province_name");
+    const cityField = document.getElementById("city_name");
+    const subdistrictField = document.getElementById("subdistrict_name");
+    const postalField = document.getElementById("postal_code");
+    const destinationField = document.getElementById("destination_id");
+
+    if (streetAddressField) streetAddressField.value = "";
+    if (provinceField) provinceField.value = "";
+    if (cityField) cityField.value = "";
+    if (subdistrictField) subdistrictField.value = "";
+    if (postalField) postalField.value = "";
+    if (destinationField) destinationField.value = "";
+
+    // Clear legacy fields
+    const legacyAddress = document.getElementById("legacy_address");
+    const legacyDestinationLabel = document.getElementById(
+        "legacy_destination_label"
+    );
+    if (legacyAddress) legacyAddress.value = "";
+    if (legacyDestinationLabel) legacyDestinationLabel.value = "";
+
+    // Hide selected location
+    const selectedLocation = document.getElementById("selected-location");
+    if (selectedLocation) {
+        selectedLocation.classList.add("hidden");
+    }
+
+    // Reset selectedDestination
+    selectedDestination = null;
+
+    // Reset address label to default
+    const rumahOption = document.querySelector(
+        'input[name="address_label"][value="Rumah"]'
+    );
+    if (rumahOption) {
+        rumahOption.checked = true;
+        updateAddressLabelStyles();
+    }
+
+    // Enable save options
+    const saveCheckbox = document.querySelector('input[name="save_address"]');
+    if (saveCheckbox) saveCheckbox.checked = true;
+
+    console.log("✅ New address form shown and cleared");
+}
+
+// TAMBAHAN: Debug function untuk troubleshooting
+window.debugDestinationId = function () {
+    const destinationId = document.getElementById("destination_id")?.value;
+    const selectedDest = selectedDestination;
+
+    console.log("🔍 DEBUG DESTINATION ID:");
+    console.log("  Field value:", destinationId);
+    console.log("  selectedDestination:", selectedDest);
+    console.log("  Field exists:", !!document.getElementById("destination_id"));
+
+    return {
+        fieldValue: destinationId,
+        selectedDestination: selectedDest,
+        fieldExists: !!document.getElementById("destination_id"),
+    };
+};
 
 function clearLocation() {
     console.log("🗑️ Clearing location");
@@ -1384,8 +1553,11 @@ function validateStep3() {
 // Shipping calculation
 async function calculateShipping() {
     if (!selectedDestination) {
-        console.log("❌ No destination selected for shipping calculation");
-        displayShippingError("Please select your delivery location first");
+        console.error("❌ No destination selected for shipping calculation");
+        displayShippingError(
+            "Please select your delivery location first",
+            "DESTINATION_REQUIRED"
+        );
         return;
     }
 
@@ -1394,21 +1566,41 @@ async function calculateShipping() {
         return;
     }
 
-    console.log("🚚 Calculating shipping to:", selectedDestination);
+    console.log(
+        "🚚 Starting REAL shipping calculation to:",
+        selectedDestination
+    );
 
     isCalculatingShipping = true;
 
     const shippingOptions = document.getElementById("shipping-options");
     const loadingDiv = document.getElementById("shipping-loading");
 
-    // Show loading
+    // Show loading state
     if (shippingOptions) shippingOptions.classList.add("hidden");
     if (loadingDiv) loadingDiv.classList.remove("hidden");
 
+    // Prepare request data with strict validation
+    const destinationId =
+        selectedDestination.id ||
+        selectedDestination.location_id ||
+        selectedDestination.destination_id;
+
+    if (!destinationId) {
+        console.error(
+            "❌ CRITICAL: No valid destination_id found",
+            selectedDestination
+        );
+        displayShippingError(
+            "Invalid destination selected. Please choose a location again.",
+            "INVALID_DESTINATION_ID"
+        );
+        resetShippingState();
+        return;
+    }
+
     const requestData = {
-        destination_id:
-            selectedDestination.location_id ||
-            selectedDestination.destination_id,
+        destination_id: destinationId,
         destination_label:
             selectedDestination.label ||
             selectedDestination.full_address ||
@@ -1416,13 +1608,33 @@ async function calculateShipping() {
         weight: totalWeight,
     };
 
-    console.log("📦 Shipping request data:", requestData);
+    console.log("📦 REAL shipping request data:", requestData);
 
     const csrfToken = document
         .querySelector('meta[name="csrf-token"]')
         ?.getAttribute("content");
 
+    if (!csrfToken) {
+        console.error("❌ CSRF token not found");
+        displayShippingError(
+            "Security token missing. Please refresh the page.",
+            "CSRF_MISSING"
+        );
+        resetShippingState();
+        return;
+    }
+
     try {
+        console.log(
+            "🔄 Making REAL API request to /checkout/calculate-shipping"
+        );
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            console.log("⏰ Request timeout triggered");
+            controller.abort();
+        }, 45000); // 45 second timeout
+
         const response = await fetch("/checkout/calculate-shipping", {
             method: "POST",
             headers: {
@@ -1432,177 +1644,472 @@ async function calculateShipping() {
                 "X-Requested-With": "XMLHttpRequest",
             },
             body: JSON.stringify(requestData),
+            signal: controller.signal,
         });
 
+        clearTimeout(timeoutId);
+
+        console.log(`📡 Response received:`, {
+            status: response.status,
+            statusText: response.statusText,
+            ok: response.ok,
+            headers: Object.fromEntries(response.headers.entries()),
+        });
+
+        // Handle different response statuses
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            const errorText = await response.text();
+            let errorData;
+
+            try {
+                errorData = JSON.parse(errorText);
+            } catch (e) {
+                errorData = { message: errorText, error: "PARSE_ERROR" };
+            }
+
+            console.error(`❌ HTTP Error ${response.status}:`, errorData);
+
+            const errorMessage =
+                errorData.message || `Server error (${response.status})`;
+            const errorCode = errorData.error || "HTTP_ERROR";
+
+            displayShippingError(errorMessage, errorCode, errorData.debug_info);
+            resetShippingState();
+            return;
         }
 
         const data = await response.json();
-        console.log("✅ Shipping calculation response:", data);
+        console.log("✅ REAL shipping response received:", data);
 
-        if (data.success && data.options && data.options.length > 0) {
-            displayShippingOptions(data.options);
-        } else {
-            throw new Error(data.error || "No shipping options available");
+        // Validate response structure
+        if (!data.success) {
+            console.error("❌ API returned success=false:", data);
+            displayShippingError(
+                data.message || "Shipping calculation failed",
+                data.error || "API_ERROR",
+                data.debug_info
+            );
+            resetShippingState();
+            return;
         }
-    } catch (error) {
-        console.error("❌ Shipping calculation error:", error);
-        displayShippingError(
-            error.message || "Failed to calculate shipping options"
+
+        if (
+            !data.options ||
+            !Array.isArray(data.options) ||
+            data.options.length === 0
+        ) {
+            console.error("❌ No shipping options in response:", data);
+            displayShippingError(
+                "No shipping services available for this destination",
+                "NO_OPTIONS_AVAILABLE",
+                data.debug_info
+            );
+            resetShippingState();
+            return;
+        }
+
+        // Success! Display real shipping options
+        console.log(
+            "🎯 REAL shipping options received:",
+            data.options.length,
+            "options"
         );
+        displayRealShippingOptions(data.options, data.meta);
+    } catch (error) {
+        console.error("❌ Shipping calculation exception:", error);
+
+        let errorMessage;
+        let errorCode;
+
+        if (error.name === "AbortError") {
+            errorMessage =
+                "Request timed out. Please check your connection and try again.";
+            errorCode = "TIMEOUT";
+        } else if (
+            error instanceof TypeError &&
+            error.message.includes("fetch")
+        ) {
+            errorMessage =
+                "Network error. Please check your internet connection.";
+            errorCode = "NETWORK_ERROR";
+        } else {
+            errorMessage = "Unexpected error during shipping calculation.";
+            errorCode = "UNEXPECTED_ERROR";
+        }
+
+        displayShippingError(errorMessage, errorCode, {
+            original_error: error.message,
+        });
     } finally {
-        isCalculatingShipping = false;
-        if (loadingDiv) loadingDiv.classList.add("hidden");
-        if (shippingOptions) shippingOptions.classList.remove("hidden");
+        resetShippingState();
     }
 }
 
-function displayShippingOptions(options) {
+function displayRealShippingOptions(options, meta = {}) {
     const shippingOptions = document.getElementById("shipping-options");
-    if (!shippingOptions) return;
+    if (!shippingOptions) {
+        console.error("❌ shipping-options element not found");
+        return;
+    }
 
-    let html = "";
+    console.log("🎨 Displaying", options.length, "real shipping options");
+
+    let html = `
+        <div class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div class="flex items-center">
+                <svg class="w-5 h-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                </svg>
+                <span class="text-green-800 font-medium">✅ Real Shipping Rates Loaded</span>
+            </div>
+            <p class="text-green-700 text-sm mt-1">
+                ${options.length} shipping option${
+        options.length > 1 ? "s" : ""
+    } available
+                ${
+                    meta.execution_time_ms
+                        ? ` (loaded in ${meta.execution_time_ms}ms)`
+                        : ""
+                }
+            </p>
+        </div>
+    `;
+
     options.forEach((option, index) => {
         const isChecked = index === 0 ? "checked" : "";
-        const cost = parseInt(option.cost || 0);
-        const formattedCost =
-            cost === 0
-                ? "Free"
-                : option.formatted_cost || "Rp " + cost.toLocaleString("id-ID");
+        const recommendedBadge = option.recommended
+            ? '<span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full ml-2">Recommended</span>'
+            : "";
 
         html += `
-            <label class="shipping-option flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 ${
+            <div class="border rounded-lg p-4 mb-3 hover:border-blue-300 transition-colors ${
                 isChecked ? "border-blue-500 bg-blue-50" : "border-gray-200"
-            }">
-                <input type="radio" name="shipping_option" value="${
-                    option.courier
-                }_${option.service}" 
-                       data-cost="${cost}" 
-                       data-description="${option.courier} ${
-            option.service
-        } - ${option.description}"
-                       onchange="selectShipping(this)" ${isChecked}
-                       class="mr-4">
-                <div class="shipping-content flex-1">
-                    <div class="font-medium flex items-center">
-                        ${option.courier_name || option.courier} - ${
-            option.service
-        }
-                        ${
-                            option.recommended
-                                ? '<span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded ml-2">Recommended</span>'
-                                : ""
-                        }
-                        ${
-                            option.is_mock || option.type === "mock"
-                                ? '<span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded ml-2">Estimate</span>'
-                                : ""
-                        }
+            } cursor-pointer" 
+                 onclick="selectShippingOption(this)">
+                <label class="flex items-center cursor-pointer w-full">
+                    <input type="radio" 
+                           name="shipping_method" 
+                           value="${option.service}" 
+                           data-cost="${option.cost}"
+                           data-courier="${option.courier}"
+                           data-description="${option.description}"
+                           ${isChecked}
+                           class="mr-3 text-blue-600">
+                    <div class="flex-1">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h4 class="font-medium text-gray-900">
+                                    ${option.courier} - ${option.service}
+                                    ${recommendedBadge}
+                                </h4>
+                                <p class="text-sm text-gray-600">${
+                                    option.description
+                                }</p>
+                                <p class="text-sm text-gray-500">
+                                    <span class="inline-flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                        ${option.formatted_etd}
+                                    </span>
+                                </p>
+                            </div>
+                            <div class="text-right">
+                                <span class="font-bold text-blue-600">${
+                                    option.formatted_cost
+                                }</span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="text-sm text-gray-600">${
-                        option.description
-                    }</div>
-                    <div class="text-sm text-gray-600">Estimated delivery: ${
-                        option.formatted_etd || option.etd + " days"
-                    }</div>
-                </div>
-                <div class="font-semibold text-blue-600">${formattedCost}</div>
-            </label>
+                </label>
+            </div>
         `;
     });
 
     shippingOptions.innerHTML = html;
 
-    // Auto-select first option and update totals
+    // Auto-select first option and update total
     if (options.length > 0) {
-        const firstOption = options[0];
-        const shippingMethodEl = document.getElementById("shipping_method");
-        const shippingCostEl = document.getElementById("shipping_cost");
+        updateShippingCost(options[0].cost);
 
-        if (shippingMethodEl) {
-            shippingMethodEl.value = `${firstOption.courier} ${firstOption.service} - ${firstOption.description}`;
-        }
-        if (shippingCostEl) {
-            shippingCostEl.value = firstOption.cost;
-        }
-
-        // PERUBAHAN: Update Order Summary totals dengan 4 parameter
-        updateOrderSummaryTotals(
-            originalSubtotal,
-            firstOption.cost,
-            discountAmount,
-            pointsDiscount // TAMBAHAN
+        // Add event listeners for shipping method changes
+        const shippingRadios = document.querySelectorAll(
+            'input[name="shipping_method"]'
         );
+        shippingRadios.forEach((radio) => {
+            radio.addEventListener("change", function () {
+                if (this.checked) {
+                    updateShippingCost(
+                        parseInt(this.getAttribute("data-cost"))
+                    );
+
+                    // Update visual selection
+                    document
+                        .querySelectorAll(
+                            '[onclick="selectShippingOption(this)"]'
+                        )
+                        .forEach((div) => {
+                            div.classList.remove(
+                                "border-blue-500",
+                                "bg-blue-50"
+                            );
+                            div.classList.add("border-gray-200");
+                        });
+
+                    this.closest("div").classList.remove("border-gray-200");
+                    this.closest("div").classList.add(
+                        "border-blue-500",
+                        "bg-blue-50"
+                    );
+                }
+            });
+        });
     }
+
+    console.log("✅ Real shipping options displayed successfully");
 }
 
-function displayShippingError(errorMessage = "Unable to calculate shipping") {
+function displayShippingError(
+    message,
+    errorCode = "UNKNOWN_ERROR",
+    debugInfo = null
+) {
     const shippingOptions = document.getElementById("shipping-options");
     if (!shippingOptions) return;
 
-    shippingOptions.innerHTML = `
-        <div class="p-4 text-center border-2 border-dashed border-red-200 rounded-lg">
-            <p class="text-red-600 mb-2">❌ ${errorMessage}</p>
-            <p class="text-sm text-gray-600">Please try selecting a different location or contact support.</p>
-            <button type="button" onclick="calculateShipping()" 
-                    class="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-                Try Again
-            </button>
+    console.error(
+        `❌ Displaying shipping error: ${errorCode} - ${message}`,
+        debugInfo
+    );
+
+    // Get user-friendly error message based on error code
+    const userMessage = getUserFriendlyErrorMessage(errorCode, message);
+    const showDebug =
+        window.location.hostname === "localhost" ||
+        window.location.hostname.includes("staging");
+
+    const html = `
+        <div class="border border-red-200 rounded-lg p-6 text-center bg-red-50">
+            <div class="flex flex-col items-center">
+                <svg class="w-12 h-12 text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <h3 class="text-lg font-medium text-red-900 mb-2">Shipping Calculation Failed</h3>
+                <p class="text-red-700 mb-4">${userMessage}</p>
+                
+                ${
+                    showDebug && debugInfo
+                        ? `
+                    <details class="mb-4 text-left w-full">
+                        <summary class="cursor-pointer text-sm text-red-600 hover:text-red-800">Debug Information</summary>
+                        <div class="mt-2 p-3 bg-red-100 rounded text-xs text-red-800 font-mono">
+                            <strong>Error Code:</strong> ${errorCode}<br>
+                            <strong>Original Message:</strong> ${message}<br>
+                            ${
+                                debugInfo
+                                    ? `<strong>Debug Info:</strong> ${JSON.stringify(
+                                          debugInfo,
+                                          null,
+                                          2
+                                      )}`
+                                    : ""
+                            }
+                        </div>
+                    </details>
+                `
+                        : ""
+                }
+                
+                <div class="flex space-x-3">
+                    <button onclick="retryShippingCalculation()" 
+                            class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors">
+                        Try Again
+                    </button>
+                    <button onclick="selectDifferentLocation()" 
+                            class="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition-colors">
+                        Select Different Location
+                    </button>
+                </div>
+                
+                ${
+                    errorCode === "NO_OPTIONS_AVAILABLE"
+                        ? `
+                    <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                        <p class="text-blue-800 text-sm">
+                            <strong>Suggestion:</strong> Try selecting a more specific address or choose a nearby area.
+                        </p>
+                    </div>
+                `
+                        : ""
+                }
+            </div>
         </div>
     `;
 
-    resetShippingOptions();
+    shippingOptions.innerHTML = html;
 }
 
-function resetShippingOptions() {
-    const shippingMethodEl = document.getElementById("shipping_method");
-    const shippingCostEl = document.getElementById("shipping_cost");
+function resetShippingState() {
+    isCalculatingShipping = false;
+    const loadingDiv = document.getElementById("shipping-loading");
+    const shippingOptions = document.getElementById("shipping-options");
 
-    if (shippingMethodEl) shippingMethodEl.value = "";
-    if (shippingCostEl) shippingCostEl.value = "0";
-
-    // PERUBAHAN: Reset Order Summary totals dengan 4 parameter
-    updateOrderSummaryTotals(
-        originalSubtotal,
-        0,
-        discountAmount,
-        pointsDiscount // TAMBAHAN
-    );
+    if (loadingDiv) loadingDiv.classList.add("hidden");
+    if (shippingOptions) shippingOptions.classList.remove("hidden");
 }
 
-function selectShipping(radio) {
-    console.log("🚚 Selected shipping:", radio.dataset.description);
+// Retry shipping calculation
+function retryShippingCalculation() {
+    console.log("🔄 Retrying shipping calculation");
+    calculateShipping();
+}
 
-    const shippingMethodEl = document.getElementById("shipping_method");
-    const shippingCostEl = document.getElementById("shipping_cost");
-    const shippingCost = parseInt(radio.dataset.cost);
+// Select different location
+function selectDifferentLocation() {
+    console.log("📍 Clearing selected destination for new selection");
 
-    if (shippingMethodEl) shippingMethodEl.value = radio.dataset.description;
-    if (shippingCostEl) shippingCostEl.value = shippingCost;
+    // Clear selected destination
+    selectedDestination = null;
 
-    // PERUBAHAN: Update Order Summary totals dengan 4 parameter
-    updateOrderSummaryTotals(
-        originalSubtotal,
-        shippingCost,
-        discountAmount,
-        pointsDiscount // TAMBAHAN
-    );
+    // Clear search input
+    const searchInput = document.getElementById("destination_search");
+    if (searchInput) {
+        searchInput.value = "";
+        searchInput.focus();
+    }
 
-    // Update selection styles
+    // Clear hidden field
+    const hiddenField = document.getElementById("destination_id");
+    if (hiddenField) {
+        hiddenField.value = "";
+    }
+
+    // Clear shipping options
     const shippingOptions = document.getElementById("shipping-options");
     if (shippingOptions) {
-        shippingOptions
-            .querySelectorAll(".shipping-option")
-            .forEach((option) => {
-                option.classList.remove("border-blue-500", "bg-blue-50");
-                option.classList.add("border-gray-200");
+        shippingOptions.innerHTML = `
+            <div class="text-center py-8 text-gray-500">
+                <svg class="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                <p>Please select a delivery location to see shipping options</p>
+            </div>
+        `;
+    }
+
+    // Reset shipping cost
+    updateShippingCost(0);
+}
+
+// Enhanced shipping option selection
+function selectShippingOption(element) {
+    // Find the radio button within this element
+    const radio = element.querySelector('input[type="radio"]');
+    if (radio) {
+        radio.checked = true;
+
+        // Update shipping cost
+        const cost = parseInt(radio.getAttribute("data-cost")) || 0;
+        updateShippingCost(cost);
+
+        // Update visual selection
+        document
+            .querySelectorAll('[onclick="selectShippingOption(this)"]')
+            .forEach((div) => {
+                div.classList.remove("border-blue-500", "bg-blue-50");
+                div.classList.add("border-gray-200");
             });
 
-        radio
-            .closest(".shipping-option")
-            .classList.add("border-blue-500", "bg-blue-50");
-        radio.closest(".shipping-option").classList.remove("border-gray-200");
+        element.classList.remove("border-gray-200");
+        element.classList.add("border-blue-500", "bg-blue-50");
+
+        console.log("✅ Shipping option selected:", {
+            service: radio.value,
+            cost: cost,
+            courier: radio.getAttribute("data-courier"),
+        });
+    }
+}
+
+// Enhanced destination selection with validation
+function selectDestination(destination) {
+    console.log("📍 Selecting destination:", destination);
+
+    // Enhanced validation for destination object
+    if (!destination) {
+        console.error("❌ Destination object is null or undefined");
+        displayShippingError(
+            "Invalid destination selected",
+            "INVALID_DESTINATION"
+        );
+        return;
+    }
+
+    // Check for valid destination ID
+    const destinationId =
+        destination.id || destination.location_id || destination.destination_id;
+
+    if (!destinationId) {
+        console.error(
+            "❌ No valid destination ID found in destination object:",
+            destination
+        );
+        displayShippingError(
+            "Invalid destination ID. Please select a different location.",
+            "INVALID_DESTINATION_ID"
+        );
+        return;
+    }
+
+    // Validate destination ID format (should be numeric)
+    if (!/^\d+$/.test(destinationId.toString())) {
+        console.error("❌ Invalid destination ID format:", destinationId);
+        displayShippingError(
+            "Invalid destination ID format. Please select a different location.",
+            "INVALID_ID_FORMAT"
+        );
+        return;
+    }
+
+    selectedDestination = destination;
+
+    console.log("✅ Destination validated and selected:", {
+        id: destinationId,
+        label: destination.label || destination.full_address,
+        city: destination.city_name,
+        subdistrict: destination.subdistrict_name,
+    });
+
+    // Update UI elements
+    const searchInput = document.getElementById("destination_search");
+    if (searchInput) {
+        const displayText =
+            destination.label ||
+            destination.full_address ||
+            `${destination.subdistrict_name}, ${destination.city_name}`;
+        searchInput.value = displayText;
+    }
+
+    // Set hidden field with validated ID
+    const hiddenField = document.getElementById("destination_id");
+    if (hiddenField) {
+        hiddenField.value = destinationId;
+        console.log("✅ Hidden destination_id field updated:", destinationId);
+    }
+
+    // Clear dropdown
+    const dropdown = document.getElementById("destination-dropdown");
+    if (dropdown) {
+        dropdown.classList.add("hidden");
+    }
+
+    // Auto-trigger shipping calculation
+    if (currentStep >= 3) {
+        console.log("🚚 Auto-triggering REAL shipping calculation");
+        setTimeout(() => {
+            calculateShipping();
+        }, 300);
     }
 }
 
