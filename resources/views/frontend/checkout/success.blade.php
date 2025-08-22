@@ -17,6 +17,36 @@
             <p class="text-gray-600">Thank you for your order. We've received your order and will process it shortly.</p>
         </div>
 
+        <!-- Pay Now Button Section (hanya tampil jika status pending) -->
+        @if($order->status === 'pending' && $order->payment_method !== 'cod')
+        <div class="mb-8 p-6 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-lg shadow-lg text-white">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-2xl font-bold mb-2">💳 Payment Required</h3>
+                    <p class="text-white opacity-90">Your order is confirmed but payment is still pending. Complete your payment now to process your order!</p>
+                </div>
+                <button 
+                    id="pay-now-btn" 
+                    onclick="initiatePayment('{{ $order->order_number }}')"
+                    class="px-8 py-4 bg-white text-orange-600 rounded-lg hover:bg-gray-100 transition-colors font-bold text-lg shadow-lg">
+                    💳 Pay Now
+                </button>
+            </div>
+        </div>
+        @endif
+
+        <!-- Loading Overlay untuk Payment -->
+        <div id="payment-loading" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div class="bg-white rounded-lg p-6 text-center max-w-sm mx-4">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p class="text-gray-700 font-medium">Opening payment gateway...</p>
+                <p class="text-gray-500 text-sm mt-2">Please wait</p>
+            </div>
+        </div>
+
+        <!-- Status Alert untuk Payment -->
+        <div id="payment-status" class="hidden mb-6"></div>
+
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
             <!-- Left Column - Order Details -->
@@ -26,7 +56,7 @@
                 <div class="bg-white rounded-lg shadow-md p-6">
                     <div class="flex items-center justify-between mb-4">
                         <h2 class="text-xl font-semibold text-gray-900">Order #{{ $order->order_number }}</h2>
-                        <span class="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">
+                        <span class="px-3 py-1 {{ $order->status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800' }} text-sm font-medium rounded-full">
                             {{ ucfirst($order->status) }}
                         </span>
                     </div>
@@ -52,6 +82,18 @@
                             <div>
                                 <h3 class="text-sm font-medium text-green-800">Payment Confirmed</h3>
                                 <p class="text-sm text-green-700">Your payment has been successfully processed. We will start preparing your order for shipment.</p>
+                            </div>
+                        </div>
+                    </div>
+                    @elseif($order->status === 'pending' && $order->payment_method !== 'cod')
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 text-yellow-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                            </svg>
+                            <div>
+                                <h3 class="text-sm font-medium text-yellow-800">Payment Pending</h3>
+                                <p class="text-sm text-yellow-700">Your order is confirmed but payment is still pending. Please complete your payment to process the order.</p>
                             </div>
                         </div>
                     </div>
@@ -237,6 +279,15 @@
                     <h3 class="text-lg font-semibold text-blue-900 mb-4">What's Next?</h3>
                     
                     <div class="space-y-3 text-sm text-blue-800">
+                        @if($order->status === 'pending' && $order->payment_method !== 'cod')
+                        <div class="flex items-start">
+                            <span class="flex-shrink-0 w-6 h-6 bg-yellow-200 rounded-full flex items-center justify-center mr-3 mt-0.5">
+                                <span class="text-xs font-semibold">💳</span>
+                            </span>
+                            <p class="text-yellow-800">Complete your payment to start order processing</p>
+                        </div>
+                        @endif
+                        
                         <div class="flex items-start">
                             <span class="flex-shrink-0 w-6 h-6 bg-blue-200 rounded-full flex items-center justify-center mr-3 mt-0.5">
                                 <span class="text-xs font-semibold">1</span>
@@ -315,4 +366,14 @@
         </div>
     </div>
 </div>
+
+<!-- Meta tags untuk Midtrans -->
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<meta name="midtrans-client-key" content="{{ config('services.midtrans.client_key') }}">
+<meta name="midtrans-production" content="{{ config('services.midtrans.is_production') ? 'true' : 'false' }}">
+<meta name="order-status" content="{{ $order->status }}">
+<meta name="payment-method" content="{{ $order->payment_method }}">
+
+<!-- Include external JavaScript -->
+<script src="{{ asset('js/checkout-success.js') }}"></script>
 @endsection

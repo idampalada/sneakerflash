@@ -168,19 +168,22 @@ Route::get('/password/reset', function() {
 })->name('password.request');
 
 // =====================================
-// CHECKOUT & PAYMENT ROUTES - CONSOLIDATED & FIXED
+// CHECKOUT & PAYMENT ROUTES - ALL PAYMENT METHODS HERE
 // =====================================
 Route::prefix('checkout')->name('checkout.')->group(function () {
     Route::get('/', [CheckoutController::class, 'index'])->name('index');
     Route::post('/', [CheckoutController::class, 'store'])->name('store');
     
-    // RajaOngkir integration - SINGLE ROUTES ONLY
+    // RajaOngkir integration
     Route::get('/search-destinations', [CheckoutController::class, 'searchDestinations'])->name('search-destinations');
     Route::post('/calculate-shipping', [CheckoutController::class, 'calculateShipping'])->name('calculate-shipping');
     
-    // Payment flow
+    // Payment flow - ALL PAYMENT METHODS
     Route::get('/payment/{orderNumber}', [CheckoutController::class, 'payment'])->name('payment');
     Route::get('/success/{orderNumber}', [CheckoutController::class, 'success'])->name('success');
+    
+    // RETRY PAYMENT - MOVED HERE FROM API SECTION
+    Route::post('/retry-payment/{orderNumber}', [CheckoutController::class, 'retryPayment'])->name('retry-payment');
     
     // Midtrans redirect callbacks
     Route::get('/payment-success', [CheckoutController::class, 'paymentSuccess'])->name('payment-success');
@@ -195,7 +198,7 @@ Route::prefix('checkout')->name('checkout.')->group(function () {
 // AUTHENTICATED USER ROUTES
 // =====================================
 Route::middleware(['auth'])->group(function () {
-    // Orders
+    // Orders - NO PAYMENT METHODS, ONLY ORDER MANAGEMENT
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/orders/{orderNumber}', [OrderController::class, 'show'])->name('orders.show');
     Route::post('/orders/{orderNumber}/cancel', [OrderController::class, 'cancel'])->name('orders.cancel');
@@ -283,8 +286,10 @@ Route::prefix('api')->name('api.')->group(function() {
     
     // Payment status
     Route::get('/payment/status/{orderNumber}', [CheckoutController::class, 'getPaymentStatus'])->name('payment.status');
-    Route::post('/payment/retry/{orderNumber}', [OrderController::class, 'retryPayment'])->name('payment.retry');
     Route::get('/payment/check/{orderNumber}', [CheckoutController::class, 'checkPaymentStatus'])->name('payment.check');
+    
+    // ❌ REMOVED: Route::post('/payment/retry/{orderNumber}', [OrderController::class, 'retryPayment'])->name('payment.retry');
+    // ✅ MOVED TO: /checkout/retry-payment/{orderNumber} above
     
     // Authenticated API routes
     Route::middleware('auth')->group(function() {
