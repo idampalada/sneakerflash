@@ -16,27 +16,79 @@ class WishlistController extends Controller
     /**
      * Display user's wishlist
      */
-    public function index()
-    {
-        if (!Auth::check()) {
-            return redirect()->route('login')->with('error', 'Please login to view your wishlist.');
-        }
 
-        // Get user's wishlist with products
-        $wishlists = Wishlist::where('user_id', Auth::id())
-            ->with(['product' => function($query) {
-                $query->where('is_active', true)
-                      ->whereNotNull('published_at')
-                      ->where('published_at', '<=', now());
-            }])
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->filter(function($wishlist) {
-                return $wishlist->product !== null; // Remove items with deleted products
-            });
-
-        return view('frontend.wishlist.index', compact('wishlists'));
+public function index()
+{
+    if (!Auth::check()) {
+        return redirect()->route('login')->with('error', 'Please login to view your wishlist.');
     }
+
+    $wishlists = Wishlist::where('user_id', Auth::id())
+        ->with(['product' => function($q) {
+            $q->where('is_active', true)
+              ->whereNotNull('published_at')
+              ->where('published_at', '<=', now());
+        }])
+        ->orderBy('created_at', 'desc')
+        ->get()
+        ->filter(fn($w) => $w->product !== null)
+        ->map(function ($w) {
+            $p = $w->product;
+
+            // ambil semua varian dalam sku_parent yang sama; jika kosong, pakai dirinya sendiri
+            $siblings = \App\Models\Product::query()
+                ->where('is_active', true)
+                ->whereNotNull('published_at')
+                ->where('published_at', '<=', now())
+                ->when($p->sku_parent, fn($q) => $q->where('sku_parent', $p->sku_parent),
+                                  fn($q) => $q->where('id', $p->id))
+                ->get();
+
+            $sizeVariants = $siblings->map(function ($sp) {
+                $sizeFromSku = $this->extractSizeFromSku($sp->sku, $sp->sku_parent);
+                $productSize = is_array($sp->available_sizes) && !empty($sp->available_sizes)
+                               ? $sp->available_sizes[0]
+                               : (is_string($sp->available_sizes) && $sp->available_sizes ? $sp->available_sizes : null);
+
+                return [
+                    'id'             => $sp->id,
+                    'size'           => $productSize ?: $sizeFromSku ?: 'One Size',
+                    'stock'          => (int) ($sp->stock_quantity ?? 0),
+                    'sku'            => $sp->sku,
+                    'price'          => $sp->sale_price ?: $sp->price,
+                    'original_price' => $sp->price,
+                    'available'      => ($sp->stock_quantity ?? 0) > 0,
+                ];
+            })->sortBy('size')->values();
+
+            $p->size_variants = $sizeVariants;
+            $p->total_stock   = $sizeVariants->sum('stock');
+
+            return $w;
+        });
+
+    return view('frontend.wishlist.index', compact('wishlists'));
+}
+
+
+    // app/Http/Controllers/Frontend/WishlistController.php
+
+private function extractSizeFromSku(?string $sku, ?string $skuParent = null): ?string
+{
+    if (!$sku) return null;
+
+    // buang parent dari sku kalau ada
+    if ($skuParent && str_contains($sku, $skuParent)) {
+        $sku = trim(str_replace($skuParent, '', $sku), "- _");
+    }
+
+    // match ukuran umum: 44, 45.3, XS-XXL, S/M/L, dll (sesuaikan kalau perlu)
+    if (preg_match('/(?:^|[\s\-_])(XS|S|M|L|XL|XXL|[0-9]{1,2}(?:\.[0-9])?)(?:$|[\s\-_])/i', $sku, $m)) {
+        return strtoupper($m[1]);
+    }
+    return null;
+}
+
 
     /**
      * Add/Remove product to/from wishlist (AJAX)

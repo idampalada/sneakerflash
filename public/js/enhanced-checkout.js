@@ -41,10 +41,6 @@ let discountAmount = 0; // TAMBAHAN: Current discount amount
 let appliedPoints = null; // Track applied points
 let pointsDiscount = 0; // Current points discount amount
 
-let isAddressLoading = false;
-let addressLoadTimeout = null;
-let addressLoadingStartTime = null;
-
 function getCurrentPointsData() {
     if (window.pointsCheckout && window.pointsCheckout.appliedPoints > 0) {
         return {
@@ -337,48 +333,6 @@ function initializeVoucherSystem() {
     }
 }
 
-function setupContinueButton() {
-    const continueBtn = document.getElementById("continue-step-2");
-    if (!continueBtn) return;
-
-    // Remove existing listeners by cloning
-    const newBtn = continueBtn.cloneNode(true);
-    continueBtn.parentNode.replaceChild(newBtn, continueBtn);
-
-    newBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        console.log("🚀 Continue button clicked");
-
-        if (isAddressLoading) {
-            console.log("⚠️ Still loading, please wait");
-            return;
-        }
-
-        this.disabled = true;
-        this.textContent = "Validating...";
-
-        setTimeout(() => {
-            if (validateStep2Enhanced()) {
-                console.log("✅ Moving to step 3");
-                nextStep(3);
-
-                setTimeout(() => {
-                    if (selectedDestination) {
-                        calculateShipping();
-                    }
-                }, 500);
-            }
-
-            this.disabled = false;
-            this.textContent = "Continue";
-        }, 100);
-    });
-
-    console.log("✅ Continue button setup complete");
-}
-
 function setupVoucherEventListeners() {
     // ✅ Voucher applied
     document.addEventListener("voucherApplied", function (e) {
@@ -603,22 +557,22 @@ function autoFillPersonalInformation() {
         const firstName = nameParts[0] || "";
         const lastName = nameParts.slice(1).join(" ") || "";
 
-        // ⭐ GANTI fillFieldIfEmpty dengan forceSetField
-        forceSetField("first_name", firstName);
-        forceSetField("last_name", lastName);
-        forceSetField("phone", authenticatedUserPhone);
+        // Fill personal information fields if they exist and are empty
+        fillFieldIfEmpty("first_name", firstName);
+        fillFieldIfEmpty("last_name", lastName);
+        fillFieldIfEmpty("phone", authenticatedUserPhone);
 
         // CRITICAL FIX: Auto-fill email from meta tag
         const userEmailMeta = document.querySelector('meta[name="user-email"]');
         if (userEmailMeta && userEmailMeta.content) {
-            forceSetField("email", userEmailMeta.content);
+            fillFieldIfEmpty("email", userEmailMeta.content);
         }
 
         // Auto-fill recipient fields in address section
-        forceSetField("recipient_name", authenticatedUserName);
-        forceSetField("phone_recipient", authenticatedUserPhone);
+        fillFieldIfEmpty("recipient_name", authenticatedUserName);
+        fillFieldIfEmpty("phone_recipient", authenticatedUserPhone);
 
-        console.log("✅ Personal information auto-filled (FORCED):", {
+        console.log("✅ Personal information auto-filled (NO TAX + VOUCHER):", {
             firstName,
             lastName,
             phone: authenticatedUserPhone,
@@ -627,15 +581,14 @@ function autoFillPersonalInformation() {
     }
 }
 
-function forceSetField(fieldId, value) {
+function fillFieldIfEmpty(fieldId, value) {
     const field = document.getElementById(fieldId);
-    if (field) {
-        field.value = value || "";
-        console.log(`📝 FORCE SET ${fieldId}:`, field.value);
-    } else {
-        console.warn(`⚠️ Field not found: ${fieldId}`);
+    if (field && !field.value.trim() && value) {
+        field.value = value;
+        console.log(`📝 Filled ${fieldId}:`, value);
     }
 }
+
 // ... [Keep all address integration functions unchanged] ...
 
 function initializeAddressIntegration() {
@@ -645,7 +598,20 @@ function initializeAddressIntegration() {
     setupLocationSearch();
     setupSavedAddressSelection();
 
-    console.log("✅ Address integration initialized");
+    // Auto-load primary address if available
+    if (userHasPrimaryAddress && primaryAddressId) {
+        console.log("🔄 Auto-loading primary address:", primaryAddressId);
+        setTimeout(() => {
+            const primaryRadio = document.querySelector(
+                `input[name="saved_address_id"][value="${primaryAddressId}"]`
+            );
+            if (primaryRadio) {
+                primaryRadio.checked = true;
+                updateSavedAddressStyles();
+                loadSavedAddress(primaryAddressId);
+            }
+        }, 100);
+    }
 }
 
 function setupSavedAddressSelection() {
@@ -657,31 +623,15 @@ function setupSavedAddressSelection() {
         input.addEventListener("change", function () {
             console.log("📍 Address selection changed:", this.value);
 
-            // Clear any pending operations
-            clearAddressLoadingState();
             updateSavedAddressStyles();
 
             if (this.value === "new") {
                 showNewAddressForm();
             } else {
-                // Small delay to prevent race conditions
-                setTimeout(() => {
-                    loadSavedAddress(this.value);
-                }, 50);
+                loadSavedAddress(this.value);
             }
         });
     });
-
-    // Handle pre-selected address on page load
-    setTimeout(() => {
-        const preSelected = document.querySelector(
-            'input[name="saved_address_id"]:checked'
-        );
-        if (preSelected && preSelected.value !== "new") {
-            console.log("📍 Pre-selected address found:", preSelected.value);
-            loadSavedAddress(preSelected.value);
-        }
-    }, 100);
 }
 
 function updateSavedAddressStyles() {
@@ -703,211 +653,68 @@ function updateSavedAddressStyles() {
     }
 }
 
-function resetAddressState() {
-    console.log("🔄 Resetting address state...");
-
-    isAddressLoading = false;
-
-    if (addressLoadTimeout) {
-        clearTimeout(addressLoadTimeout);
-        addressLoadTimeout = null;
-    }
-
-    const continueBtn = document.getElementById("continue-step-2");
-    if (continueBtn) {
-        continueBtn.disabled = false;
-        continueBtn.textContent = "Continue";
-    }
-
-    console.log("✅ Address state reset completed");
-}
-
-// ⭐ TAMBAHAN: Helper function untuk check loading state
-function isAddressLoadingCheck() {
-    return isAddressLoading;
-}
-
 function loadSavedAddress(addressId) {
-    if (addressId === "new") {
-        showNewAddressForm();
-        return Promise.resolve();
-    }
-
     console.log("🔄 Loading saved address:", addressId);
 
-    // Prevent multiple loads
-    if (isAddressLoading) {
-        console.log("⚠️ Address already loading");
-        return Promise.resolve();
+    if (addressId === "new") {
+        showNewAddressForm();
+        return;
     }
 
-    isAddressLoading = true;
-    addressLoadingStartTime = Date.now();
-
-    // Clear form first
-    clearAddressForm();
-
-    // Hide new address form
+    // Hide new address form when using saved address
     const newAddressForm = document.getElementById("new-address-form");
     if (newAddressForm) {
         newAddressForm.classList.add("hidden");
     }
 
-    // Set button to loading state
-    const continueBtn = document.getElementById("continue-step-2");
-    const originalText = continueBtn?.textContent || "Continue";
-
-    if (continueBtn) {
-        continueBtn.disabled = true;
-        continueBtn.textContent = "Loading address...";
-    }
-
-    // Set safety timeout
-    addressLoadTimeout = setTimeout(() => {
-        console.log("⏰ Address loading timeout");
-        restoreButtonState(continueBtn, originalText);
-        isAddressLoading = false;
-    }, 2000); // 2 second timeout
-
     // Fetch address data
-    return fetch(`/profile/addresses/${addressId}/show`, {
+    fetch("/profile/addresses/" + addressId + "/show", {
         headers: {
             Accept: "application/json",
             "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')
-                ?.content,
+                .content,
         },
     })
-        .then((response) => {
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            return response.json();
-        })
+        .then((response) => response.json())
         .then((data) => {
-            if (data.success && data.address) {
-                populateAddressFormDirectly(data.address);
-                console.log("✅ Address loaded successfully");
+            if (data.success) {
+                populateAddressForm(data.address);
             } else {
-                throw new Error(data.message || "Failed to load address");
+                console.error("Failed to load address:", data.message);
+                showNewAddressForm();
             }
         })
         .catch((error) => {
-            console.error("❌ Error loading address:", error);
+            console.error("Error loading address:", error);
             showNewAddressForm();
-        })
-        .finally(() => {
-            // Always cleanup
-            clearAddressLoadingState();
-            restoreButtonState(continueBtn, originalText);
-
-            const loadTime = Date.now() - addressLoadingStartTime;
-            console.log(`📊 Address loading took ${loadTime}ms`);
         });
-}
-
-function clearAddressForm() {
-    const fieldsToFresh = [
-        "recipient_name",
-        "phone_recipient",
-        "street_address",
-        "province_name",
-        "city_name",
-        "subdistrict_name",
-        "postal_code",
-        "destination_id",
-        "legacy_address",
-        "legacy_destination_label",
-    ];
-
-    fieldsToFresh.forEach((fieldId) => {
-        const field = document.getElementById(fieldId);
-        if (field) {
-            field.value = "";
-        }
-    });
-
-    selectedDestination = null;
-
-    const selectedLocation = document.getElementById("selected-location");
-    if (selectedLocation) {
-        selectedLocation.classList.add("hidden");
-    }
-}
-
-function clearAddressLoadingState() {
-    isAddressLoading = false;
-    addressLoadingStartTime = null;
-
-    if (addressLoadTimeout) {
-        clearTimeout(addressLoadTimeout);
-        addressLoadTimeout = null;
-    }
-}
-
-function debugAddressState() {
-    const destId = document.getElementById("destination_id");
-    const savedInput = document.querySelector(
-        'input[name="saved_address_id"]:checked'
-    );
-
-    console.log("🔍 DEBUG ADDRESS STATE:", {
-        selected_address_id: savedInput?.value,
-        destination_id_element: !!destId,
-        destination_id_value: destId?.value,
-        selectedDestination: selectedDestination,
-        all_form_data: {
-            recipient_name: document.getElementById("recipient_name")?.value,
-            phone_recipient: document.getElementById("phone_recipient")?.value,
-            street_address: document.getElementById("street_address")?.value,
-            province_name: document.getElementById("province_name")?.value,
-            city_name: document.getElementById("city_name")?.value,
-            subdistrict_name:
-                document.getElementById("subdistrict_name")?.value,
-            postal_code: document.getElementById("postal_code")?.value,
-        },
-    });
 }
 
 function populateAddressForm(address) {
     console.log("📝 Populating address form:", address);
 
-    // Fill address form fields dengan FORCE
-    forceSetField("recipient_name", address.recipient_name);
-    forceSetField("phone_recipient", address.phone_recipient);
-    forceSetField("street_address", address.street_address);
+    // Fill address form fields
+    fillFieldIfEmpty("recipient_name", address.recipient_name);
+    fillFieldIfEmpty("phone_recipient", address.phone_recipient);
+    fillFieldIfEmpty("street_address", address.street_address);
 
     // Fill location fields
-    forceSetField("province_name", address.province_name);
-    forceSetField("city_name", address.city_name);
-    forceSetField("subdistrict_name", address.subdistrict_name);
-    forceSetField("postal_code", address.postal_code);
-
-    // ⭐ CRITICAL FIX: Pastikan destination_id SELALU ter-set
-    const destinationId = address.destination_id || address.id || "17551"; // fallback ke default
-    forceSetField("destination_id", destinationId);
-
-    console.log("🎯 DESTINATION_ID SET TO:", destinationId);
+    fillFieldIfEmpty("province_name", address.province_name);
+    fillFieldIfEmpty("city_name", address.city_name);
+    fillFieldIfEmpty("subdistrict_name", address.subdistrict_name);
+    fillFieldIfEmpty("postal_code", address.postal_code);
+    fillFieldIfEmpty("destination_id", address.destination_id || "");
 
     // Fill legacy fields for backward compatibility
-    const fullAddress =
-        address.full_address ||
-        `${address.street_address}, ${address.subdistrict_name}, ${address.city_name}, ${address.province_name} ${address.postal_code}`;
-    const locationString =
-        address.location_string ||
-        `${address.province_name}, ${address.city_name}, ${address.subdistrict_name}, ${address.postal_code}`;
+    fillFieldIfEmpty("legacy_address", address.full_address);
+    fillFieldIfEmpty("legacy_destination_label", address.location_string);
 
-    forceSetField("legacy_address", fullAddress);
-    forceSetField("legacy_destination_label", locationString);
-
-    // ⭐ CRITICAL FIX: Set selectedDestination dengan benar
+    // Set selectedDestination for shipping calculation
     selectedDestination = {
-        location_id: destinationId,
-        destination_id: destinationId, // double assignment untuk safety
-        label: locationString,
-        full_address: fullAddress,
+        location_id: address.destination_id,
+        label: address.location_string,
+        full_address: address.full_address,
     };
-
-    console.log("✅ selectedDestination SET:", selectedDestination);
 
     // Show selected location
     const selectedLocation = document.getElementById("selected-location");
@@ -916,7 +723,7 @@ function populateAddressForm(address) {
     );
 
     if (selectedLocation && selectedLocationText) {
-        selectedLocationText.textContent = locationString;
+        selectedLocationText.textContent = address.location_string;
         selectedLocation.classList.remove("hidden");
     }
 
@@ -938,161 +745,6 @@ function populateAddressForm(address) {
     if (primaryCheckbox) primaryCheckbox.checked = false;
 }
 
-function populateAddressFormDirectly(address) {
-    console.log("📝 Populating address form:", address);
-
-    // Force set all fields
-    const fields = {
-        recipient_name: address.recipient_name || "",
-        phone_recipient: address.phone_recipient || "",
-        street_address: address.street_address || "",
-        province_name: address.province_name || "",
-        city_name: address.city_name || "",
-        subdistrict_name: address.subdistrict_name || "",
-        postal_code: address.postal_code || "",
-        destination_id: address.destination_id || address.id || "",
-        legacy_address: address.full_address || "",
-        legacy_destination_label: address.location_string || "",
-    };
-
-    Object.entries(fields).forEach(([fieldId, value]) => {
-        const field = document.getElementById(fieldId);
-        if (field) {
-            field.value = value;
-        }
-    });
-
-    // Set selectedDestination
-    const destinationId = address.destination_id || address.id || "";
-    selectedDestination = {
-        location_id: destinationId,
-        destination_id: destinationId,
-        label: address.location_string || "",
-        full_address: address.full_address || "",
-        id: destinationId,
-    };
-
-    // Show selected location
-    const selectedLocation = document.getElementById("selected-location");
-    const selectedLocationText = document.getElementById(
-        "selected-location-text"
-    );
-
-    if (selectedLocation && selectedLocationText) {
-        selectedLocationText.textContent = address.location_string || "";
-        selectedLocation.classList.remove("hidden");
-    }
-
-    // Set address label
-    const labelInput = document.querySelector(
-        `input[name="address_label"][value="${address.label || "Rumah"}"]`
-    );
-    if (labelInput) {
-        labelInput.checked = true;
-        updateAddressLabelStyles();
-    }
-
-    console.log("✅ Address populated with destination_id:", destinationId);
-}
-
-function forcePopulateAddressForm(address) {
-    console.log("📝 FORCE Populating address form:", address);
-
-    // ⭐ FORCE SET ALL FIELDS - tidak ada kondisi, langsung set
-    forceSetField("recipient_name", address.recipient_name || "");
-    forceSetField("phone_recipient", address.phone_recipient || "");
-    forceSetField("street_address", address.street_address || "");
-    forceSetField("province_name", address.province_name || "");
-    forceSetField("city_name", address.city_name || "");
-    forceSetField("subdistrict_name", address.subdistrict_name || "");
-    forceSetField("postal_code", address.postal_code || "");
-
-    // ⭐ CRITICAL: Multiple attempts untuk set destination_id
-    const destinationId = address.destination_id || address.id || "17551";
-    forceSetField("destination_id", destinationId);
-
-    console.log("🎯 DESTINATION_ID FORCE SET TO:", destinationId);
-
-    // Build full address strings
-    const fullAddress =
-        address.full_address ||
-        `${address.street_address || ""}, ${address.subdistrict_name || ""}, ${
-            address.city_name || ""
-        }, ${address.province_name || ""} ${address.postal_code || ""}`;
-    const locationString =
-        address.location_string ||
-        `${address.province_name || ""}, ${address.city_name || ""}, ${
-            address.subdistrict_name || ""
-        }, ${address.postal_code || ""}`;
-
-    forceSetField("legacy_address", fullAddress);
-    forceSetField("legacy_destination_label", locationString);
-
-    // ⭐ FORCE SET selectedDestination
-    selectedDestination = {
-        location_id: destinationId,
-        destination_id: destinationId,
-        label: locationString,
-        full_address: fullAddress,
-        id: destinationId,
-    };
-
-    console.log("✅ selectedDestination FORCE SET:", selectedDestination);
-
-    // Show selected location
-    const selectedLocation = document.getElementById("selected-location");
-    const selectedLocationText = document.getElementById(
-        "selected-location-text"
-    );
-
-    if (selectedLocation && selectedLocationText) {
-        selectedLocationText.textContent = locationString;
-        selectedLocation.classList.remove("hidden");
-    }
-
-    // Set address label
-    const labelInput = document.querySelector(
-        `input[name="address_label"][value="${address.label || "Rumah"}"]`
-    );
-    if (labelInput) {
-        labelInput.checked = true;
-        updateAddressLabelStyles();
-    }
-
-    // Disable save options since this is existing address
-    const saveCheckbox = document.querySelector('input[name="save_address"]');
-    const primaryCheckbox = document.querySelector(
-        'input[name="set_as_primary"]'
-    );
-    if (saveCheckbox) saveCheckbox.checked = false;
-    if (primaryCheckbox) primaryCheckbox.checked = false;
-
-    console.log("✅ FORCE Population completed");
-}
-
-function verifyDestinationId(address) {
-    const destField = document.getElementById("destination_id");
-    const expectedId = address.destination_id || address.id || "17551";
-
-    if (!destField) {
-        console.error("❌ destination_id field not found!");
-        return;
-    }
-
-    if (!destField.value || destField.value !== expectedId) {
-        console.log(`🔧 Setting destination_id to ${expectedId}`);
-        destField.value = expectedId;
-
-        // Update selectedDestination
-        if (selectedDestination) {
-            selectedDestination.location_id = expectedId;
-            selectedDestination.destination_id = expectedId;
-            selectedDestination.id = expectedId;
-        }
-    }
-
-    console.log("✅ destination_id verified:", destField.value);
-}
 function showNewAddressForm() {
     console.log("📝 Showing new address form");
 
@@ -1109,21 +761,25 @@ function showNewAddressForm() {
         document.querySelector('meta[name="authenticated-user-phone"]')
             ?.content || "";
 
-    // ⭐ GANTI fillFieldIfEmpty dengan forceSetField
-    forceSetField("recipient_name", authenticatedUserName);
-    forceSetField("phone_recipient", authenticatedUserPhone);
+    // Pre-fill with user data
+    fillFieldIfEmpty("recipient_name", authenticatedUserName);
+    fillFieldIfEmpty("phone_recipient", authenticatedUserPhone);
 
-    // Clear other fields dengan forceSetField
-    forceSetField("street_address", "");
-    forceSetField("province_name", "");
-    forceSetField("city_name", "");
-    forceSetField("subdistrict_name", "");
-    forceSetField("postal_code", "");
-    forceSetField("destination_id", "");
+    // Clear other fields
+    document.getElementById("street_address").value = "";
+    document.getElementById("province_name").value = "";
+    document.getElementById("city_name").value = "";
+    document.getElementById("subdistrict_name").value = "";
+    document.getElementById("postal_code").value = "";
+    document.getElementById("destination_id").value = "";
 
     // Clear legacy fields
-    forceSetField("legacy_address", "");
-    forceSetField("legacy_destination_label", "");
+    const legacyAddress = document.getElementById("legacy_address");
+    const legacyDestinationLabel = document.getElementById(
+        "legacy_destination_label"
+    );
+    if (legacyAddress) legacyAddress.value = "";
+    if (legacyDestinationLabel) legacyDestinationLabel.value = "";
 
     // Hide selected location
     const selectedLocation = document.getElementById("selected-location");
@@ -1292,28 +948,29 @@ function displayLocationResults(locations) {
 function selectLocation(location) {
     console.log("📍 Location selected:", location);
 
-    // ⭐ GANTI fillFieldIfEmpty dengan forceSetField
-    forceSetField("province_name", location.province_name || "");
-    forceSetField("city_name", location.city_name || "");
-    forceSetField("subdistrict_name", location.subdistrict_name || "");
-    forceSetField(
+    // Fill location fields
+    fillFieldIfEmpty("province_name", location.province_name || "");
+    fillFieldIfEmpty("city_name", location.city_name || "");
+    fillFieldIfEmpty("subdistrict_name", location.subdistrict_name || "");
+    fillFieldIfEmpty(
         "postal_code",
         location.zip_code || location.postal_code || ""
     );
 
     // ✅ FIXED: Gunakan properti ID yang benar dari API response
+    // Berdasarkan log, kemungkinan besar properti yang benar adalah 'id'
     const destinationId =
         location.id || location.location_id || location.destination_id || "";
-    forceSetField("destination_id", destinationId);
+    fillFieldIfEmpty("destination_id", destinationId);
 
-    console.log("🎯 Destination ID set:", destinationId);
+    console.log("🎯 Destination ID set:", destinationId); // TAMBAHAN: Debug log
 
     // Fill legacy fields for backward compatibility
-    forceSetField(
+    fillFieldIfEmpty(
         "legacy_address",
         location.full_address || location.label || ""
     );
-    forceSetField(
+    fillFieldIfEmpty(
         "legacy_destination_label",
         location.full_address || location.label || ""
     );
@@ -1321,8 +978,8 @@ function selectLocation(location) {
     // ✅ FIXED: Update selectedDestination dengan ID yang benar
     selectedDestination = {
         ...location,
-        destination_id: destinationId,
-        location_id: destinationId,
+        destination_id: destinationId, // TAMBAHAN: Pastikan destination_id tersedia
+        location_id: destinationId, // TAMBAHAN: Fallback untuk kompatibilitas
     };
 
     // Display selected location
@@ -1419,12 +1076,21 @@ function setupEventListeners() {
         });
     }
 
-    // ⭐ REMOVE onclick handler to prevent conflict with DOMContentLoaded listener
+    // FIXED: Override continue buttons with proper validation
     const continueStep2 = document.getElementById("continue-step-2");
     if (continueStep2) {
-        // Remove onclick attribute if exists
-        continueStep2.removeAttribute("onclick");
-        continueStep2.onclick = null;
+        continueStep2.onclick = function (e) {
+            e.preventDefault();
+            if (validateStep2Enhanced()) {
+                nextStep(3);
+                // Auto-calculate shipping when moving to step 3
+                setTimeout(() => {
+                    if (selectedDestination) {
+                        calculateShipping();
+                    }
+                }, 500);
+            }
+        };
     }
 
     // ADDED: Listen for shipping cost changes to update totals WITHOUT TAX
@@ -1655,55 +1321,15 @@ function setFieldValueSafe(fieldId, value) {
 }
 
 function validateSavedAddressSelection(errors) {
+    // Check if destination_id is set (indicates address is loaded)
     const destinationId = document.getElementById("destination_id");
-    const savedAddressInput = document.querySelector(
-        'input[name="saved_address_id"]:checked'
-    );
-
-    console.log("🔍 Validating saved address:", {
-        destinationValue: destinationId?.value,
-        selectedDestination: selectedDestination,
-        addressId: savedAddressInput?.value,
-        isLoading: isAddressLoading,
-    });
-
-    // ⭐ CHECK: If still loading, reject validation
-    if (isAddressLoading) {
-        errors.push("Address is still loading, please wait...");
-        return false;
-    }
-
-    // ⭐ CHECK: destination_id field value
-    const hasDestinationId =
-        destinationId &&
-        destinationId.value &&
-        destinationId.value.trim() !== "";
-
-    // ⭐ CHECK: selectedDestination object
-    const hasSelectedDestination =
-        selectedDestination &&
-        (selectedDestination.location_id ||
-            selectedDestination.destination_id ||
-            selectedDestination.id);
-
-    if (!hasDestinationId && !hasSelectedDestination) {
+    if (!destinationId || !destinationId.value) {
         errors.push(
-            "Please select a valid address or wait for address to load"
+            "Please wait for address to load or select a different address"
         );
         return false;
     }
 
-    // ⭐ SYNC: destination_id field with selectedDestination
-    if (!hasDestinationId && hasSelectedDestination) {
-        const destId =
-            selectedDestination.location_id ||
-            selectedDestination.destination_id ||
-            selectedDestination.id;
-        console.log("🔧 Syncing destination_id:", destId);
-        destinationId.value = destId;
-    }
-
-    console.log("✅ Validation passed");
     return true;
 }
 
@@ -2061,13 +1687,6 @@ function displayShippingError(errorMessage = "Unable to calculate shipping") {
     resetShippingOptions();
 }
 
-function restoreButtonState(button, originalText) {
-    if (button) {
-        button.disabled = false;
-        button.textContent = originalText;
-    }
-}
-
 function resetShippingOptions() {
     const shippingMethodEl = document.getElementById("shipping_method");
     const shippingCostEl = document.getElementById("shipping_cost");
@@ -2293,41 +1912,54 @@ function handleOrderSubmission(paymentMethod) {
         });
 }
 
-function validateSavedAddressSelection(errors) {
-    console.log("🔍 Validating saved address");
+function validateAndFillAddressFields(formData) {
+    // Ensure all required address fields are filled
+    const requiredAddressFields = [
+        "recipient_name",
+        "phone_recipient",
+        "province_name",
+        "city_name",
+        "subdistrict_name",
+        "postal_code",
+        "street_address",
+    ];
 
-    if (isAddressLoading) {
-        errors.push("Address is loading, please wait...");
-        return false;
+    requiredAddressFields.forEach((field) => {
+        const element = document.getElementById(field);
+        if (element && element.value) {
+            formData.set(field, element.value);
+        }
+    });
+
+    // Ensure destination_id is set
+    const destinationIdElement = document.getElementById("destination_id");
+    if (destinationIdElement && destinationIdElement.value) {
+        formData.set("destination_id", destinationIdElement.value);
     }
 
-    const destinationId = document.getElementById("destination_id");
-    const hasDestinationId =
-        destinationId &&
-        destinationId.value &&
-        destinationId.value.trim() !== "";
-    const hasSelectedDestination =
-        selectedDestination &&
-        (selectedDestination.location_id ||
-            selectedDestination.destination_id ||
-            selectedDestination.id);
-
-    if (!hasDestinationId && !hasSelectedDestination) {
-        errors.push("Please select a valid address");
-        return false;
+    // Set address label if not set
+    if (!formData.get("address_label")) {
+        const addressLabelInput = document.querySelector(
+            'input[name="address_label"]:checked'
+        );
+        if (addressLabelInput) {
+            formData.set("address_label", addressLabelInput.value);
+        } else {
+            formData.set("address_label", "Rumah"); // Default
+        }
     }
 
-    // Sync if needed
-    if (!hasDestinationId && hasSelectedDestination) {
-        const destId =
-            selectedDestination.location_id ||
-            selectedDestination.destination_id ||
-            selectedDestination.id;
-        destinationId.value = destId;
-    }
+    // Fill legacy address field for backward compatibility
+    const streetAddress = formData.get("street_address");
+    const locationString = `${formData.get("subdistrict_name")}, ${formData.get(
+        "city_name"
+    )}, ${formData.get("province_name")} ${formData.get("postal_code")}`;
 
-    console.log("✅ Address validation passed");
-    return true;
+    if (streetAddress) {
+        const fullAddress = `${streetAddress}, ${locationString}`;
+        formData.set("address", fullAddress);
+        formData.set("destination_label", locationString);
+    }
 }
 
 // ✅ FIXED: Proper snap_token handling + robust fallback
@@ -2491,25 +2123,6 @@ function handleOrderError(message) {
     console.error("❌ Order error:", message);
     alert(message);
     showError("❌ " + message);
-}
-
-function resetAddressState() {
-    console.log("🔄 Resetting address state...");
-
-    isAddressLoading = false;
-
-    if (addressLoadTimeout) {
-        clearTimeout(addressLoadTimeout);
-        addressLoadTimeout = null;
-    }
-
-    const continueBtn = document.getElementById("continue-step-2");
-    if (continueBtn) {
-        continueBtn.disabled = false;
-        continueBtn.textContent = "Continue";
-    }
-
-    console.log("✅ Address state reset completed");
 }
 
 function resetSubmitButton() {
@@ -2842,121 +2455,3 @@ console.log("  - Cart data properly displayed in Order Summary");
 console.log("  - TAX COMPLETELY REMOVED from all calculations");
 console.log("  - VOUCHER SYSTEM integrated with proper event handling");
 console.log("  - MIDTRANS POPUP FIXED with robust fallback mechanism");
-
-document.addEventListener("DOMContentLoaded", function () {
-    console.log("🚀 ENHANCED DOMContentLoaded - Setting up continue button...");
-
-    // Wait shorter time untuk avoid race condition
-    setTimeout(() => {
-        const continueBtn = document.getElementById("continue-step-2");
-        if (continueBtn) {
-            // Remove any existing listeners
-            const newBtn = continueBtn.cloneNode(true);
-            continueBtn.parentNode.replaceChild(newBtn, continueBtn);
-
-            // Add clean event listener
-            newBtn.addEventListener("click", function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                console.log("🚀 Continue clicked");
-
-                // ⭐ CHECK: Don't proceed if address is loading
-                if (isAddressLoading) {
-                    console.log("⚠️ Address still loading, please wait...");
-                    showNotification(
-                        "Please wait for address to load",
-                        "warning"
-                    );
-                    return;
-                }
-
-                // Disable button temporarily
-                this.disabled = true;
-                this.textContent = "Validating...";
-
-                setTimeout(() => {
-                    if (validateStep2Enhanced()) {
-                        console.log("✅ Validation passed - moving to step 3");
-                        nextStep(3);
-
-                        setTimeout(() => {
-                            if (selectedDestination) {
-                                calculateShipping();
-                            }
-                        }, 500);
-                    } else {
-                        console.log("❌ Validation failed");
-                    }
-
-                    // Re-enable button
-                    this.disabled = false;
-                    this.textContent = "Continue";
-                }, 200);
-            });
-
-            console.log("✅ Continue button listener attached");
-        }
-    }, 500); // DIKURANGI dari 1000ms ke 500ms
-});
-
-// ⭐ MAKE GLOBAL FUNCTIONS AVAILABLE
-window.resetAddressState = resetAddressState;
-window.isAddressLoading = isAddressLoadingCheck;
-window.loadSavedAddress = loadSavedAddress;
-
-// ⭐ TAMBAHAN: Emergency button restore jika stuck
-function emergencyButtonRestore() {
-    const continueBtn = document.getElementById("continue-step-2");
-    if (continueBtn) {
-        continueBtn.disabled = false;
-        continueBtn.textContent = "Continue";
-        isAddressLoading = false;
-        if (addressLoadTimeout) {
-            clearTimeout(addressLoadTimeout);
-            addressLoadTimeout = null;
-        }
-        console.log("🚨 Emergency button restore completed");
-    }
-}
-
-window.emergencyButtonRestore = emergencyButtonRestore;
-
-console.log("✅ Missing variables and functions added successfully");
-
-document.addEventListener("DOMContentLoaded", function () {
-    console.log("🚀 Setting up address system");
-
-    setTimeout(() => {
-        setupContinueButton();
-    }, 200);
-});
-
-// ========== UTILITY FUNCTIONS ==========
-
-function resetAddressState() {
-    console.log("🔄 Resetting address state");
-    clearAddressLoadingState();
-
-    const continueBtn = document.getElementById("continue-step-2");
-    if (continueBtn) {
-        continueBtn.disabled = false;
-        continueBtn.textContent = "Continue";
-    }
-}
-
-function getAddressLoadingState() {
-    return {
-        isLoading: isAddressLoading,
-        startTime: addressLoadingStartTime,
-        hasTimeout: !!addressLoadTimeout,
-    };
-}
-
-// ========== GLOBAL EXPORTS ==========
-
-window.resetAddressState = resetAddressState;
-window.getAddressLoadingState = getAddressLoadingState;
-window.loadSavedAddress = loadSavedAddress;
-
-console.log("✅ Address loading system initialized");

@@ -651,6 +651,98 @@ function closeModal() {
         opt.style.borderColor = '';
     });
 }
+
+const WISHLIST_CSRF = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+// Delegasi klik untuk semua tombol wishlist di grid
+document.addEventListener('click', function (ev) {
+    const btn = ev.target.closest('.wishlist-btn');
+    if (!btn) return;
+
+    ev.preventDefault();
+    ev.stopPropagation();
+
+    const productId = btn.dataset.productId;
+    const productName = btn.dataset.productName || 'Product';
+    const icon = btn.querySelector('.wishlist-icon') || btn.querySelector('i');
+
+    if (!productId) return;
+    btn.disabled = true;
+
+    fetch(`/wishlist/toggle/${productId}`, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': WISHLIST_CSRF,
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(r => r.ok ? r.json() : Promise.reject(r))
+    .then(data => {
+        // jika backend mengirim redirect (belum login)
+        if (data && data.redirect) {
+            window.location.href = data.redirect;
+            return;
+        }
+
+        if (!data || data.success === false) {
+            showToast((data && data.message) || 'Gagal mengubah wishlist', 'error');
+            return;
+        }
+
+        const added = !!data.is_added;
+
+        // Toggle ikon hati (solid merah saat added)
+        if (icon) {
+            icon.classList.toggle('fas', added);
+            icon.classList.toggle('far', !added);
+            icon.style.color = added ? '#ef4444' : '';
+        }
+
+        // Update badge jumlah wishlist (opsional jika backend kirim)
+        if ('wishlist_count' in data) {
+            document.querySelectorAll('[data-wishlist-count], .wishlist-badge')
+                .forEach(el => el.textContent = data.wishlist_count);
+        }
+
+        showToast(`${productName} ${added ? 'ditambahkan ke' : 'dihapus dari'} wishlist`,
+                  added ? 'success' : 'info');
+    })
+    .catch(() => {
+        showToast('Terjadi kesalahan saat toggle wishlist.', 'error');
+    })
+    .finally(() => {
+        btn.disabled = false;
+    });
+});
+
+// ==== Toast utilities (pakai elemen #toastNotification yang sudah ada) ====
+function showToast(message, type = 'success') {
+    const toast = document.getElementById('toastNotification');
+    const icon = document.getElementById('toastIcon');
+    const messageEl = document.getElementById('toastMessage');
+    if (!toast || !icon || !messageEl) return;
+
+    messageEl.textContent = message;
+
+    icon.className = 'fas ';
+    switch(type) {
+        case 'success': icon.className += 'fa-check-circle text-green-500'; break;
+        case 'error':   icon.className += 'fa-exclamation-circle text-red-500'; break;
+        case 'info':    icon.className += 'fa-info-circle text-blue-500'; break;
+        default:        icon.className += 'fa-check-circle text-green-500';
+    }
+
+    toast.classList.remove('hidden');
+    // auto-hide
+    clearTimeout(window.__toastTimer);
+    window.__toastTimer = setTimeout(hideToast, 3000);
+}
+
+function hideToast() {
+    const toast = document.getElementById('toastNotification');
+    if (toast) toast.classList.add('hidden');
+}
 </script>
 @endsection
 
