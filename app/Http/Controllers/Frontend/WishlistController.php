@@ -16,79 +16,142 @@ class WishlistController extends Controller
     /**
      * Display user's wishlist
      */
+    public function index()
+    {
+        if (!Auth::check()) {
+            return redirect()->route('login')->with('error', 'Please login to view your wishlist.');
+        }
 
-public function index()
-{
-    if (!Auth::check()) {
-        return redirect()->route('login')->with('error', 'Please login to view your wishlist.');
+        // Get user's wishlist with products
+        $wishlists = Wishlist::where('user_id', Auth::id())
+            ->with(['product' => function($query) {
+                $query->where('is_active', true)
+                      ->whereNotNull('published_at')
+                      ->where('published_at', '<=', now());
+            }])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->filter(function($wishlist) {
+                return $wishlist->product !== null; // Remove items with deleted products
+            })
+            ->map(function ($wishlist) {
+                // ⭐ CRITICAL: Process size variants for each product
+                $product = $wishlist->product;
+                
+                if ($product && $product->sku_parent) {
+                    // Get ALL variants with same sku_parent
+                    $allSiblings = Product::query()
+                        ->where('is_active', true)
+                        ->whereNotNull('published_at')
+                        ->where('published_at', '<=', now())
+                        ->where('sku_parent', $product->sku_parent)
+                        ->get();
+
+                    // ⭐ PROCESS into proper size_variants format (NOT raw Product objects)
+                    $processedVariants = [];
+                    
+                    foreach ($allSiblings as $sp) {
+                        // Get size from available_sizes (decode JSON if needed)
+                        $size = null;
+                        if (is_string($sp->available_sizes)) {
+                            $decoded = json_decode($sp->available_sizes, true);
+                            if (is_array($decoded) && !empty($decoded)) {
+                                $size = $decoded[0];
+                            }
+                        } elseif (is_array($sp->available_sizes) && !empty($sp->available_sizes)) {
+                            $size = $sp->available_sizes[0];
+                        }
+                        
+                        // Fallback to SKU extraction if needed
+                        if (!$size) {
+                            $size = $this->extractSizeFromSku($sp->sku, $sp->sku_parent);
+                        }
+
+                        $finalSize = $size ?: 'One Size';
+                        $stock = (int) ($sp->stock_quantity ?? 0);
+                        $available = $stock > 0;
+
+                        // ⭐ CREATE PROPER FORMAT - same as ProductController
+                        $processedVariants[] = [
+                            'id'             => $sp->id,
+                            'size'           => $finalSize,
+                            'stock'          => $stock,
+                            'sku'            => $sp->sku,
+                            'price'          => $sp->sale_price ?: $sp->price,
+                            'original_price' => $sp->price,
+                            'available'      => $available,
+                        ];
+                    }
+
+                    // Sort by size
+                    usort($processedVariants, function($a, $b) {
+                        return $a['size'] <=> $b['size'];
+                    });
+
+                    // ⭐ SET AS PLAIN ARRAY - CRITICAL!
+                    $product->size_variants = $processedVariants;
+                    $product->total_stock = array_sum(array_column($processedVariants, 'stock'));
+                    
+                } else {
+                    // For products without sku_parent, create single variant
+                    $product->size_variants = [[
+                        'id'             => $product->id,
+                        'size'           => 'One Size',
+                        'stock'          => (int) ($product->stock_quantity ?? 0),
+                        'sku'            => $product->sku,
+                        'price'          => $product->sale_price ?: $product->price,
+                        'original_price' => $product->price,
+                        'available'      => ($product->stock_quantity ?? 0) > 0,
+                    ]];
+                    $product->total_stock = $product->stock_quantity ?? 0;
+                }
+                
+                return $wishlist;
+            });
+
+        return view('frontend.wishlist.index', compact('wishlists'));
     }
 
-    $wishlists = Wishlist::where('user_id', Auth::id())
-        ->with(['product' => function($q) {
-            $q->where('is_active', true)
-              ->whereNotNull('published_at')
-              ->where('published_at', '<=', now());
-        }])
-        ->orderBy('created_at', 'desc')
-        ->get()
-        ->filter(fn($w) => $w->product !== null)
-        ->map(function ($w) {
-            $p = $w->product;
-
-            // ambil semua varian dalam sku_parent yang sama; jika kosong, pakai dirinya sendiri
-            $siblings = \App\Models\Product::query()
-                ->where('is_active', true)
-                ->whereNotNull('published_at')
-                ->where('published_at', '<=', now())
-                ->when($p->sku_parent, fn($q) => $q->where('sku_parent', $p->sku_parent),
-                                  fn($q) => $q->where('id', $p->id))
-                ->get();
-
-            $sizeVariants = $siblings->map(function ($sp) {
-                $sizeFromSku = $this->extractSizeFromSku($sp->sku, $sp->sku_parent);
-                $productSize = is_array($sp->available_sizes) && !empty($sp->available_sizes)
-                               ? $sp->available_sizes[0]
-                               : (is_string($sp->available_sizes) && $sp->available_sizes ? $sp->available_sizes : null);
-
-                return [
-                    'id'             => $sp->id,
-                    'size'           => $productSize ?: $sizeFromSku ?: 'One Size',
-                    'stock'          => (int) ($sp->stock_quantity ?? 0),
-                    'sku'            => $sp->sku,
-                    'price'          => $sp->sale_price ?: $sp->price,
-                    'original_price' => $sp->price,
-                    'available'      => ($sp->stock_quantity ?? 0) > 0,
-                ];
-            })->sortBy('size')->values();
-
-            $p->size_variants = $sizeVariants;
-            $p->total_stock   = $sizeVariants->sum('stock');
-
-            return $w;
-        });
-
-    return view('frontend.wishlist.index', compact('wishlists'));
-}
-
-
-    // app/Http/Controllers/Frontend/WishlistController.php
-
-private function extractSizeFromSku(?string $sku, ?string $skuParent = null): ?string
-{
-    if (!$sku) return null;
-
-    // buang parent dari sku kalau ada
-    if ($skuParent && str_contains($sku, $skuParent)) {
-        $sku = trim(str_replace($skuParent, '', $sku), "- _");
+    /**
+     * Extract size from SKU pattern
+     */
+    private function extractSizeFromSku(?string $sku, ?string $skuParent = null): ?string
+    {
+        if (empty($sku) || empty($skuParent)) {
+            return null;
+        }
+        
+        // Find the size part after the last dash
+        $parts = explode('-', $sku);
+        if (count($parts) >= 2) {
+            $sizePart = end($parts);
+            
+            // Handle shoe size patterns like 405 -> 40.5, 425 -> 42.5, 445 -> 44.5
+            if (preg_match('/^(\d{2})5$/', $sizePart)) {
+                return substr($sizePart, 0, 2) . '.5';
+            }
+            
+            // Common clothing sizes  
+            if (in_array(strtoupper($sizePart), ['S', 'M', 'L', 'XL', 'XXL', 'XS'])) {
+                return strtoupper($sizePart);
+            }
+            
+            // Regular numeric sizes (like 42, 43, 44)
+            if (is_numeric($sizePart)) {
+                return $sizePart;
+            }
+            
+            // Already formatted sizes like 40.5, 42.5 (with decimal)
+            if (preg_match('/^\d+\.\d+$/', $sizePart)) {
+                return $sizePart;
+            }
+            
+            // Fallback - return the size part as-is
+            return $sizePart;
+        }
+        
+        return null;
     }
-
-    // match ukuran umum: 44, 45.3, XS-XXL, S/M/L, dll (sesuaikan kalau perlu)
-    if (preg_match('/(?:^|[\s\-_])(XS|S|M|L|XL|XXL|[0-9]{1,2}(?:\.[0-9])?)(?:$|[\s\-_])/i', $sku, $m)) {
-        return strtoupper($m[1]);
-    }
-    return null;
-}
-
 
     /**
      * Add/Remove product to/from wishlist (AJAX)
