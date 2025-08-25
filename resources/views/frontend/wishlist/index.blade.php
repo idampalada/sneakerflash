@@ -41,22 +41,6 @@
                 </div>
             </div>
 
-            <!-- DEBUG: Raw Controller Data -->
-<div style="background: red; color: white; padding: 10px; margin: 10px;">
-    <strong>DEBUG RAW DATA FROM CONTROLLER</strong><br>
-    Wishlists count: {{ $wishlists->count() }}<br>
-    @if($wishlists->count() > 0)
-        @php $firstWishlist = $wishlists->first(); @endphp
-        First product ID: {{ $firstWishlist->product->id ?? 'NULL' }}<br>
-        Has size_variants: {{ isset($firstWishlist->product->size_variants) ? 'YES' : 'NO' }}<br>
-        Size variants type: {{ gettype($firstWishlist->product->size_variants ?? null) }}<br>
-        Size variants count: {{ ($firstWishlist->product->size_variants ?? collect())->count() }}<br>
-        @if(isset($firstWishlist->product->size_variants))
-            Raw size_variants: {{ json_encode($firstWishlist->product->size_variants) }}<br>
-        @endif
-    @endif
-</div>
-
             <!-- Wishlist Items Grid - Same as Products Grid -->
             <div id="wishlistGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 @foreach($wishlists as $wishlist)
@@ -68,9 +52,8 @@
                             $finalPrice = $salePrice && $salePrice < $productPrice ? $salePrice : $productPrice;
                             $cleanProductName = $product->name ?? 'Unknown Product';
                             
-                            // Use size_variants from controller processing
-                            $sizeVariants = $product->size_variants ?? collect();
-                            $hasVariants = $sizeVariants->count() > 1; // Only show "Select Size" if multiple sizes
+                            // Get size variants if available
+                            $hasVariants = $product->available_sizes && is_array($product->available_sizes) && count($product->available_sizes) > 0;
                         @endphp
                         
                         <div class="product-card wishlist-item group bg-white rounded-2xl overflow-hidden border border-gray-100 hover:border-gray-200 hover:shadow-lg transition-all duration-300 relative">
@@ -124,76 +107,19 @@
                                     </span>
                                 </div>
 
-                                <!-- Debug: Check size_variants data -->
-                                @if(config('app.debug'))
-                                    <!-- Debug info (only in development) -->
-                                    <div class="text-xs text-red-500 mb-2 p-2 bg-red-50 rounded">
-                                        <strong>DEBUG INFO:</strong><br>
-                                        hasVariants: {{ $hasVariants ? 'TRUE' : 'FALSE' }}<br>
-                                        sizeVariants count: {{ $sizeVariants->count() }}<br>
-                                        totalStock: {{ $product->total_stock ?? 'NULL' }}<br>
-                                        product.id: {{ $product->id }}<br>
-                                        @if($sizeVariants->count() > 0)
-                                            Sizes available: {{ $sizeVariants->pluck('size')->implode(', ') }}<br>
-                                            First variant: {{ json_encode($sizeVariants->first()) }}<br>
-                                            All variants: {{ json_encode($sizeVariants->toArray()) }}
-                                        @endif
-                                    </div>
-                                @endif
-
-                                <!-- Hidden size data for modal (sama seperti products/index.blade.php) -->
-                                @if($sizeVariants->count() > 1)
-                                    <div class="mb-3">
-                                        <span class="text-xs text-gray-500 font-medium">Available Sizes:</span>
-                                        <div class="flex flex-wrap gap-1 mt-1" id="sizeContainer-{{ $product->id }}">
-                                            @foreach($sizeVariants as $variant)
-                                                @php
-                                                    $size = $variant['size'] ?? 'Unknown';
-                                                    $stock = (int) ($variant['stock'] ?? 0);
-                                                    $variantId = $variant['id'] ?? '';
-                                                    $sku = $variant['sku'] ?? '';
-                                                    $isAvailable = $stock > 0;
-                                                    $variantPrice = $variant['price'] ?? $finalPrice;
-                                                    $variantOriginalPrice = $variant['original_price'] ?? $productPrice;
-                                                @endphp
-                                                <span class="size-badge text-xs px-2 py-1 rounded border {{ $isAvailable ? 'text-gray-700 bg-gray-50 border-gray-200 hover:bg-blue-50 hover:border-blue-300' : 'text-gray-400 bg-gray-100 border-gray-200 line-through' }}" 
-                                                      data-size="{{ $size }}" 
-                                                      data-stock="{{ $stock }}"
-                                                      data-product-id="{{ $variantId }}"
-                                                      data-sku="{{ $sku }}"
-                                                      data-available="{{ $isAvailable ? 'true' : 'false' }}"
-                                                      data-price="{{ $variantPrice }}"
-                                                      data-original-price="{{ $variantOriginalPrice }}">
-                                                    {{ $size }}
-                                                </span>
-                                            @endforeach
-                                        </div>
-                                    </div>
-                                @else
-                                    <!-- Single size product - create hidden container for consistency -->
+                                <!-- Hidden size data for modal (same as products/index.blade.php) -->
+                                @if($hasVariants)
                                     <div id="sizeContainer-{{ $product->id }}" class="hidden">
-                                        @if($sizeVariants->count() > 0)
-                                            @php
-                                                $variant = $sizeVariants->first();
-                                                $size = $variant['size'] ?? 'One Size';
-                                                $stock = (int) ($variant['stock'] ?? 0);
-                                                $variantId = $variant['id'] ?? $product->id;
-                                                $sku = $variant['sku'] ?? '';
-                                                $isAvailable = $stock > 0;
-                                                $variantPrice = $variant['price'] ?? $finalPrice;
-                                                $variantOriginalPrice = $variant['original_price'] ?? $productPrice;
-                                            @endphp
-                                            <span class="size-badge" 
-                                                  data-size="{{ $size }}" 
-                                                  data-stock="{{ $stock }}"
-                                                  data-product-id="{{ $variantId }}"
-                                                  data-sku="{{ $sku }}"
-                                                  data-available="{{ $isAvailable ? 'true' : 'false' }}"
-                                                  data-price="{{ $variantPrice }}"
-                                                  data-original-price="{{ $variantOriginalPrice }}">
-                                                {{ $size }}
-                                            </span>
-                                        @endif
+                                        @foreach($product->available_sizes as $size)
+                                            <div class="size-badge"
+                                                 data-size="{{ $size }}"
+                                                 data-stock="{{ $product->stock_quantity ?? 0 }}"
+                                                 data-product-id="{{ $product->id }}"
+                                                 data-price="{{ $finalPrice }}"
+                                                 data-original-price="{{ $productPrice }}"
+                                                 data-available="{{ ($product->stock_quantity ?? 0) > 0 ? 'true' : 'false' }}">
+                                            </div>
+                                        @endforeach
                                     </div>
                                 @endif
                             </div>
@@ -217,18 +143,14 @@
                                 </h3>
                                 
                                 <!-- Display available sizes and colors if exist -->
-                                @if($sizeVariants->count() > 0 || $product->available_colors)
+                                @if($product->available_sizes || $product->available_colors)
                                     <div class="mb-3 text-xs text-gray-500">
-                                        @if($sizeVariants->count() > 0)
+                                        @if($product->available_sizes)
                                             <div class="mb-1">
                                                 <span class="font-medium">Sizes:</span>
-                                                @php
-                                                    $sizesPreview = $sizeVariants->pluck('size')->take(3);
-                                                    $remainingSizes = $sizeVariants->count() - 3;
-                                                @endphp
-                                                {{ $sizesPreview->implode(', ') }}
-                                                @if($remainingSizes > 0)
-                                                    <span class="text-gray-400">+{{ $remainingSizes }} more</span>
+                                                {{ is_array($product->available_sizes) ? implode(', ', array_slice($product->available_sizes, 0, 3)) : $product->available_sizes }}
+                                                @if(is_array($product->available_sizes) && count($product->available_sizes) > 3)
+                                                    <span class="text-gray-400">+{{ count($product->available_sizes) - 3 }} more</span>
                                                 @endif
                                             </div>
                                         @endif
@@ -523,131 +445,61 @@
         var productName = button.getAttribute('data-product-name');
         var defaultPrice = button.getAttribute('data-price') || '0';
         
-        console.log('🔍 Opening modal for:', productName, 'Product ID:', productId, 'Price:', defaultPrice);
+        console.log('Opening modal for:', productName, 'Price:', defaultPrice);
         
         var modal = document.getElementById('sizeSelectionModal');
         var title = document.getElementById('modalProductName');
         var container = document.getElementById('sizeOptionsContainer');
         
-        if (!modal || !container) {
-            console.log('❌ Modal or container not found');
-            return;
-        }
+        if (!modal || !container) return;
         
         // Set title
         if (title) title.textContent = 'Select Size - ' + productName;
         
-        // Find the correct product card - could be .product-card or .wishlist-item
-        var productCard = button.closest('.product-card') || button.closest('.wishlist-item');
-        console.log('📦 Product card found:', !!productCard);
+        // Get sizes from product card
+        var productCard = button.closest('.product-card');
+        var sizeContainer = productCard ? productCard.querySelector('#sizeContainer-' + productId) : null;
         
-        if (!productCard) {
-            console.log('❌ Product card not found');
-            return;
-        }
-        
-        // Try to find size container with exact ID match
-        var sizeContainer = productCard.querySelector('#sizeContainer-' + productId);
-        console.log('📏 Size container found:', !!sizeContainer);
-        
-        // Debug: Log the innerHTML of sizeContainer if found
-        if (sizeContainer) {
-            console.log('📝 Size container HTML:', sizeContainer.innerHTML);
-            console.log('📝 Size container children:', sizeContainer.children.length);
-            
-            // Debug each child element
-            Array.from(sizeContainer.children).forEach((child, idx) => {
-                console.log(`📝 Child ${idx}:`, {
-                    tagName: child.tagName,
-                    className: child.className,
-                    attributes: {
-                        'data-size': child.getAttribute('data-size'),
-                        'data-stock': child.getAttribute('data-stock'),
-                        'data-product-id': child.getAttribute('data-product-id'),
-                        'data-available': child.getAttribute('data-available')
-                    }
-                });
-            });
-        } else {
-            // Try to find any element with id starting with sizeContainer
-            var allSizeContainers = productCard.querySelectorAll('[id^="sizeContainer-"]');
-            console.log('🔍 Found', allSizeContainers.length, 'size containers in product card');
-            allSizeContainers.forEach(function(container, index) {
-                console.log(`📋 Container ${index}:`, {
-                    id: container.id,
-                    innerHTML: container.innerHTML.substring(0, 200),
-                    children: container.children.length
-                });
-            });
-        }
-        
-        // Clear container first
+        // Clear container
         container.innerHTML = '';
         
-        if (!sizeContainer) {
-            console.log('❌ Size container not found, creating error message');
-            container.innerHTML = '<div class="col-span-4 text-center text-gray-500 p-4">Size data not available</div>';
-        } else {
+        if (sizeContainer) {
             var badges = sizeContainer.querySelectorAll('.size-badge');
-            console.log('🏷️ Size badges found:', badges.length);
             
-            if (badges.length === 0) {
-                console.log('❌ No size badges found in container');
-                container.innerHTML = '<div class="col-span-4 text-center text-gray-500 p-4">No sizes available</div>';
-            } else {
-                console.log('✅ Processing', badges.length, 'size badges');
+            badges.forEach(function(badge) {
+                var size = badge.getAttribute('data-size');
+                var stock = badge.getAttribute('data-stock');
+                var productVariantId = badge.getAttribute('data-product-id');
+                var available = badge.getAttribute('data-available') === 'true';
                 
-                badges.forEach(function(badge, index) {
-                    var size = badge.getAttribute('data-size');
-                    var stock = badge.getAttribute('data-stock');
-                    var productVariantId = badge.getAttribute('data-product-id');
-                    var available = badge.getAttribute('data-available') === 'true';
-                    var price = badge.getAttribute('data-price') || defaultPrice;
-                    var originalPrice = badge.getAttribute('data-original-price') || defaultPrice;
-                    
-                    console.log(`📋 Size ${index + 1}:`, {
-                        size: size,
-                        stock: stock,
-                        productVariantId: productVariantId,
-                        available: available,
-                        price: price
-                    });
-                    
-                    if (!size || !productVariantId) {
-                        console.log('⚠️ Missing required data for size option', {size, productVariantId});
-                        return;
-                    }
-                    
-                    var div = document.createElement('div');
-                    div.className = 'size-option cursor-pointer p-4 border-2 rounded-lg text-center transition-all ' + 
-                        (available ? 'border-gray-300 hover:border-blue-500' : 'disabled border-gray-200 bg-gray-50');
-                    
-                    div.setAttribute('data-product-id', productVariantId);
-                    div.setAttribute('data-size', size);
-                    div.setAttribute('data-stock', stock);
-                    div.setAttribute('data-price', price);
-                    div.setAttribute('data-original-price', originalPrice);
-                    
-                    div.innerHTML = `
-                        <div class="font-semibold text-lg ${available ? 'text-gray-900' : 'text-gray-400'}">${size}</div>
-                        <div class="text-xs mt-1 ${available ? 'text-gray-600' : 'text-gray-400'}">
-                            ${available ? stock + ' available' : 'Out of stock'}
-                        </div>
-                    `;
-                    
-                    container.appendChild(div);
-                });
+                var price = badge.getAttribute('data-price') || defaultPrice;
+                var originalPrice = badge.getAttribute('data-original-price') || defaultPrice;
                 
-                console.log('✅ Size options created successfully');
-            }
+                var div = document.createElement('div');
+                div.className = 'size-option cursor-pointer p-4 border-2 rounded-lg text-center transition-all ' + 
+                    (available ? 'border-gray-300 hover:border-blue-500' : 'disabled border-gray-200 bg-gray-50');
+                
+                div.setAttribute('data-product-id', productVariantId);
+                div.setAttribute('data-size', size);
+                div.setAttribute('data-stock', stock);
+                div.setAttribute('data-price', price);
+                div.setAttribute('data-original-price', originalPrice);
+                
+                div.innerHTML = `
+                    <div class="font-semibold text-lg ${available ? 'text-gray-900' : 'text-gray-400'}">${size}</div>
+                    <div class="text-xs mt-1 ${available ? 'text-gray-600' : 'text-gray-400'}">
+                        ${available ? stock + ' available' : 'Out of stock'}
+                    </div>
+                `;
+                
+                container.appendChild(div);
+            });
         }
         
         // Show modal
         modal.classList.remove('hidden');
         modal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
-        
-        console.log('✅ Modal displayed');
     }
 
     function selectSize(element) {
